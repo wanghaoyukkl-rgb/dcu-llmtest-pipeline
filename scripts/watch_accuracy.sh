@@ -40,7 +40,7 @@ while true; do
     LAST_LINES=$(tail -n 80 "${LOG_FILE}" 2>/dev/null)
     TOTAL_LINES=$(wc -l < "${LOG_FILE}" 2>/dev/null)
 
-    # 检查是否完成（evalscope 完成后会输出包含 accuracy 的结果行）
+    # 检查是否完成（evalscope/opencompass 通常会输出 accuracy、score 或 result）
     if echo "${LAST_LINES}" | grep -qiE "(accuracy|score|result|测试完成|完成)"; then
         # 提取精度数值行
         RESULT_LINE=$(echo "${LAST_LINES}" | grep -iE "(accuracy|score)" | tail -5)

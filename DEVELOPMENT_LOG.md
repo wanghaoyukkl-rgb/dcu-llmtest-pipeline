@@ -1,5 +1,17 @@
 # dcu-llmtest-pipeline 开发日志
 
+## v0.5.3-alpha - 2026-05-22
+
+### 主要变化
+
+- 将评测框架文档从 `references/evaluation_framework/intall_evaluation_framework.md` 重命名为 `references/evaluation_framework/install_evaluation_framework.md`。
+- 补充 `evalscope` 与 `opencompass` 的安装方式、验证命令和选择规则。
+- `SKILL.md` 版本号升级为 `v0.5.3-alpha`。
+- 精度测试流程增加评测工具选择：默认 `evalscope`，用户可选择 `opencompass`。
+- 精度测试执行步骤拆成 `evalscope` 和 `opencompass` 两条路径；opencompass 需要用户提供或确认配置。
+- 将 `references/rules/dcu_adaptation_rules.md` 从 Megatron 训练规则改写为 DCU 推理服务适配规则。
+- 移除当前版本特性中已过时的本地 Qwen 启动脚本描述。
+
 ## v0.5.2-alpha - 2026-05-22
 
 ### 主要变化

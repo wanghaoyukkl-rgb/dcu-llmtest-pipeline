@@ -1,44 +1,72 @@
-# DCU Megatron 架构适配与规则知识库 
-**【第一指令】本文件供 AI Agent 自动读取使用。在生成 Megatron 训练脚本时，必须严格以给定的基础 `train.sh` 模板为底座。除了根据 `config.json` 计算得出的模型架构参数、并行切分策略外，模板中的其他任何 Bash 逻辑、循环处理、非模型相关的环境变量定义，一概不准修改、删除或重构！**
+# DCU 推理服务适配规则
 
-## 0. 模板修改边界界定 (严格遵守)
-- **允许修改的区域**：
-  - `GPT_MODEL_ARGS`：网络架构核心参数。
-  - `TRAINING_ARGS`：训练开关（如偏置、学习率、激活函数）。
-  - `MODEL_PARALLEL_ARGS`：TP/PP/CP/EP 切分策略。
-- **严禁修改的区域**：
-  - 文件开头的参数解析循环 (`for para in $*...`)。
-  - Profiling 相关的环境变量设定 (`MIOPEN_DEBUG_*`, `ROCBLAS_*` 等)。
-  - DCU 底层环境变量 (`GLOG_minloglevel`, `HSA_FORCE_FINE_GRAIN_PCIE`, `NVTE_*` 等)。
-  - 启动命令拼接逻辑 (`APP="python -u ..."` 及后续的 if 判断)。
+本文件供 AI Agent 在生成、校验和修改 vLLM/SGLang 推理服务启动脚本时读取。它只面向推理服务，不再包含 Megatron 训练脚本规则。
 
-## 1. 核心网络参数推导规则
+## 0. 总原则
 
-### 1.1 FFN 隐藏层维度 (FFN Hidden Size)
-- **通用规则**：如果 config 中存在 `intermediate_size` 或 `moe_intermediate_size`，优先直接使用。
-- **Llama 架构推导公式**：如果缺失，根据 SwiGLU 规范，计算公式为：
-  `ffn_size = int(8/3 * hidden_size)`
-  然后将 `ffn_size` 向上取整到 `multiple_of` (默认 256) 的整数倍。
-  *(例如：hidden_size=4096 -> 10922.66 -> 向上取整到 256 的倍数 -> 11008)*
+- 优先参考 HYGON-AI cookbook；cookbook 未覆盖且框架为 vLLM 时，再参考 `references/VLLM测试指导.md`。
+- 不要凭经验删减 DCU、NUMA、通信、量化、MoE、IFB/PD 调度相关环境变量。
+- 默认使用 IFB 模式；只有用户明确要求时才使用 PD 分离模式。
+- 当前只考虑单机模型，一个任务绑定一个节点，默认一个节点 8 张卡。
+- 若来源方案需要多节点或超过 8 卡，标记 blocked，并询问用户是否提供适配脚本或调整测试目标。
 
-### 1.2 线性层偏置 (Linear Bias & QKV)
-- **Llama 族 (Llama, Baichuan 等)**：原生不带偏置。
-  - 必须保留：`--disable-bias-linear`
-  - **严禁**添加：`--add-qkv-bias`
-- **Qwen 族 (Qwen1.5, Qwen2.5)**：原生带有 QKV 偏置。
-  - 必须保留：`--disable-bias-linear`
-  - 必须添加：`--add-qkv-bias`
+## 1. 卡型与来源匹配
 
-### 1.3 注意力机制 (Attention)
-- **GQA (分组查询注意力)**：若 config 中 `num_key_value_heads` 存在且 `< num_attention_heads`。
-  - 必须添加：`--group-query-attention`
-  - 必须添加：`--num-query-groups <对应值>`
-- **Flash Attention**：现代大模型默认开启。
-  - 必须保留：`--use-flash-attn`
+- cookbook 或本地补充文档中的卡型必须与当前节点卡型一致。
+- `NMZ` / `nmz` 规范化为 `BW1100` 或 `BW1101`。
+- `BMZ` / `bmz` 规范化为 `BW1000`。
+- `KME` / `K100_AI` / `K100AI` 规范化为 `K100AI`。
+- 若当前节点卡型和来源方案卡型不一致，不要强行改写命令；询问用户是否换节点或提供适配脚本。
 
-## 2. 并行切分安全规则 (Parallelism)
+## 2. 启动脚本元信息
 
-- **TP (Tensor Parallel)**：`num_attention_heads` 必须能被 `TP` 整除。
-  - 7B~14B 模型：建议 TP=1 或 2。
-- **PP (Pipeline Parallel)**：`num_hidden_layers` 必须能被 `PP` 整除。
-- **EP (Expert Parallel, 仅限 MoE)**：专家总数 `num_experts` 必须能被 `EP` 整除，通常结合 `TP` 使用。
+生成脚本时，文件开头必须写明：
+
+- 模型名称
+- 推理框架：`vllm` 或 `sglang`
+- 方案来源：cookbook 文件或 `references/VLLM测试指导.md`
+- 来源条目：模型标题和卡型小节
+- 当前节点卡型
+- 部署模式：`IFB` 或 `PD`
+- 推荐卡数和实际卡 ID
+- TP/PP/DP
+- dtype 和量化方式
+- 服务端口和日志路径
+
+## 3. 端口与日志
+
+- 端口由计划表统一分配，不能沿用来源文档里的固定端口。
+- vLLM 默认端口池：`8000-8099`。
+- SGLang 默认端口池：`30000-30099`。
+- 同一计划中端口必须全局唯一。
+- vLLM 日志建议：`/tmp/vllm_serve.log`。
+- SGLang 日志建议：`/tmp/sglang_serve.log`。
+- 执行时如端口已占用，重新分配端口并同步更新计划表、启动脚本和 watcher 参数。
+
+## 4. 环境变量保护
+
+以下类型变量不得随意删除：
+
+- DCU/HIP/ROCm：`HIP_VISIBLE_DEVICES`、`HSA_FORCE_FINE_GRAIN_PCIE`、`HIP_*`、`ROCR_*`。
+- 通信：`NCCL_*`、`GLOO_SOCKET_IFNAME`、`ALLREDUCE_STREAM_WITH_COMPUTE`、`SENDRECV_STREAM_WITH_COMPUTE`、`Allgather_Base_STREAM_WITH_COMPUTE`。
+- NUMA：`VLLM_NUMA_BIND`、`VLLM_RANK*_NUMA`、SGLang `--numa-node`。
+- vLLM 优化：`VLLM_*`、`LMSLIM_*`、`USE_FUSED_*`、`USE_LIGHTOP_*`。
+- SGLang 优化：`SGLANG_*`、`USE_DCU_CUSTOM_ALLREDUCE`、`USE_SPE_MQP`。
+- 量化/MoE/MLA/DSA 相关参数：`--kv-cache-dtype`、`-q`、`--quantization`、`--attention-backend`、`--speculative_config`、`--enable-chunked-prefill` 等。
+
+若确实要删改，必须说明来源方案、删改原因和风险，并得到用户确认。
+
+## 5. 并行切分安全检查
+
+- TP 不得超过当前任务分配卡数。
+- PP/TP 组合所需卡数不得超过当前节点空闲卡数。
+- 一个 8 卡任务独占一个节点当前波次。
+- 小模型可同节点并行，但并行任务卡数之和不能超过节点空闲卡数。
+- 对 cookbook 或本地补充文档已明确给出的 TP/PP/DP，以来源方案为准。
+- 来源没有明确卡数时，先根据模型规模和当前卡型推断，并向用户说明推断依据。
+
+## 6. 服务就绪校验
+
+- 启动服务后必须使用 `watch_llm_ready.sh` 写入 `/tmp/llm_status.json`。
+- 只有 `status == "ready"` 时才能触发精度或性能测试。
+- 失败或超时时只读取少量日志上下文，不读取完整日志。

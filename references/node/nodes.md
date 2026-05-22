@@ -1,5 +1,5 @@
-# DCU Megatron 架构适配与规则知识库 
-**【第一指令】本文件供 AI Agent 自动读取使用。在调用dcu-llmtest-pipeline skill需要进行模型推理查找当前可用节点信息**
+# DCU 推理测试节点资源清单
+**【第一指令】本文件供 AI Agent 自动读取使用。在调用 dcu-llmtest-pipeline skill 进行模型推理、批量测试或计划编排时，用于查找当前可用节点信息。**
 
 ## 0. 当前可用节点ip列表
 ### 0.1 NMZ
@@ -23,4 +23,3 @@
 查看当前节点频率情况:`/opt/hyhal/bin/hy-smi -c`
 查看当前驱动版本:`/opt/hyhal/bin/hy-smi --showdriverversion`
 查看当前节点加速卡型号:`/opt/hyhal/bin/hy-smi --showproductname`
-

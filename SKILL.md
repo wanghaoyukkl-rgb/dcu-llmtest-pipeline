@@ -1,12 +1,12 @@
 ---
 name: dcu-llmtest-pipeline
 description: DCU模型推理全流程自动化工具。目前支持模式：1)通用完整流程模式(查找可用资源→生成脚本→推理→数据整理)；2)高自定义模式（查找可用资源→配置环境→根据提供的脚本和参数来进行推理和汇报）；3)多模型自动计划模式（查找节点资源→收集模型/卡型/测试类型→查询启动资源需求→生成并确认并行/串行计划表→按波次执行）。当用户提到"模型推理"、"性能测试"、"精度测试"、"批量测试"、"多个模型"、"计划表"时使用此skill。
-version: "0.5.2-alpha"
+version: "0.5.3-alpha"
 ---
 
 # DCU 推理全流程 Skill
 
-当前版本：**v0.5.2-alpha**
+当前版本：**v0.5.3-alpha**
 
 ## 当前版本特性
 
@@ -17,19 +17,18 @@ version: "0.5.2-alpha"
 - 支持服务启动脚本准备：已有脚本直接使用，缺失时可由用户提供或参考现有脚本生成。
 - 支持基于 HYGON-AI `dcu-inference-cookbook/docs/model-deployment/` 的 vLLM/SGLang 最佳实践生成模型服务启动脚本；详见 `references/model_deployment_cookbook.md`。
 - 支持本地 `VLLM测试指导.md` 作为 vLLM 补充方案来源；当 GitHub cookbook 未覆盖目标模型时，读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md` 查找测试方案。
-- 已内置 vLLM 启动脚本示例：`Qwen3-8B`、`Qwen3-30B-A3B`。
 - 支持通用 LLM 服务就绪监控：`watch_llm_ready.sh` 可监控 vLLM、SGLang 和 OpenAI-compatible 服务，默认探活 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
 - 服务监控采用低 token 状态文件机制：Agent 正常只读取 `/tmp/llm_status.json`，失败或超时时才读取少量日志上下文。
-- 支持 evalscope 精度测试脚本 `eval_accuracy.sh`，并通过 `watch_accuracy.sh` 写入 `/tmp/eval_status.json` 实现长任务后台状态跟踪。
+- 支持 `evalscope` 与 `opencompass` 两种精度评测工具选择；evalscope 可使用 `eval_accuracy.sh`，两者安装方式见 `references/evaluation_framework/install_evaluation_framework.md`。
 - 提供精度测试报告模板，覆盖测试时间、节点、镜像、容器、模型、数据集、测试条数、精度结果和备注。
 
 ## 当前版本边界
 
 - 性能测试流程仍处于占位阶段，尚未提供标准压测脚本和吞吐/延迟指标汇总。
 - 高自定义模式已有入口描述，但执行步骤还未像完整流程一样细化。
-- 本地模型服务启动脚本样例目前主要覆盖 Qwen3 系列；其他模型优先参考 HYGON-AI cookbook，cookbook 未覆盖时再由用户提供或由 Agent 参考模板生成。
+- 模型服务启动脚本不再依赖本地 Qwen 示例脚本；优先参考 HYGON-AI cookbook，cookbook 未覆盖时再查本地 VLLM 测试指导或请求用户提供脚本。
 - 自动计划模式暂只支持单机模型：一个模型任务只绑定一个节点，不考虑跨节点模型。
-- 环境安装说明较基础，evalscope/opencompass、数据集准备和离线依赖处理仍需继续补齐。
+- evalscope/opencompass 已有安装和选择规则；数据集准备、离线依赖处理和 OpenCompass 具体配置模板仍需继续补齐。
 - 开发日志记录在 `DEVELOPMENT_LOG.md`，仅在维护 skill 时阅读，普通推理/测试任务不需要加载。
 
 作为高级 AI 测试工程师的辅助助手，本 skill 支持三种工作模式，在开始时请先向用户确认选择哪种模式。
@@ -81,7 +80,9 @@ version: "0.5.2-alpha"
 ### 2.2 环境配置
 根据用户提供的测试信息，如果包含“精度测试”则需要配置精度测试环境；如果包含“性能测试”则需要配置性能测试环境。
 1. 精度测试环境配置：
-- 安装必要的测试工具（evalscope、opencompass）
+- 读取 `references/evaluation_framework/install_evaluation_framework.md`
+- 让用户选择评测工具：`evalscope`（默认）或 `opencompass`
+- 按用户选择安装必要测试工具
 - 准备测试数据集
 2. 性能测试环境配置：
 - 
@@ -338,15 +339,29 @@ watcher 默认等待 **30 分钟**。若 `/tmp/llm_status.json` 中 `status` 为
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | 模型名 | 与推理服务一致 | 上一步所用模型 |
-| 数据集 | evalscope 支持的数据集名 | `gsm8k` |
+| 评测工具 | `evalscope` 或 `opencompass` | `evalscope` |
+| 数据集 | 评测工具支持的数据集名或 OpenCompass 配置中的数据集 | `gsm8k` |
 | limit | 测试条数，`0` 表示全量 | `10`（调试），正式测试去掉此参数 |
+| OpenCompass 配置 | 使用 opencompass 时需要的 config 或参数 | 用户提供或现场确认 |
 
 ---
 
-**Step B：上传脚本到节点**
+**Step B：按评测工具准备脚本**
+
+如果用户选择 `evalscope`，上传脚本到节点：
 
 ```bash
 scp scripts/eval_accuracy.sh <Node_IP>:/tmp/eval_accuracy.sh
+scp scripts/watch_accuracy.sh <Node_IP>:/tmp/watch_accuracy.sh
+```
+
+如果用户选择 `opencompass`：
+
+- 不使用 `eval_accuracy.sh`。
+- 先确认 OpenCompass 配置、数据集路径、模型 API 地址和输出目录。
+- 仍上传 `watch_accuracy.sh` 用于监控日志状态。
+
+```bash
 scp scripts/watch_accuracy.sh <Node_IP>:/tmp/watch_accuracy.sh
 ```
 
@@ -354,9 +369,22 @@ scp scripts/watch_accuracy.sh <Node_IP>:/tmp/watch_accuracy.sh
 
 **Step C：在容器内后台启动精度测试**
 
+`evalscope` 执行方式：
+
 ```bash
 ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
   'bash /tmp/eval_accuracy.sh <模型名> <数据集> <limit> \
+   > /tmp/eval_accuracy.log 2>&1'"
+```
+
+`opencompass` 执行方式：
+
+根据用户提供或确认的 OpenCompass 配置启动。以下为模板，实际命令必须按当前 OpenCompass 配置调整：
+
+```bash
+ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
+  'cd /workspace/opencompass || cd /mnt/opencompass || cd /workspace && \
+   python -m opencompass <OpenCompass配置或参数> \
    > /tmp/eval_accuracy.log 2>&1'"
 ```
 
