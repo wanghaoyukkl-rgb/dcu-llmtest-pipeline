@@ -1,0 +1,464 @@
+---
+name: dcu-llmtest-pipeline
+description: DCU模型推理全流程自动化工具。目前支持模式：1)通用完整流程模式(查找可用资源→生成脚本→推理→数据整理)；2)高自定义模式（查找可用资源→配置环境→根据提供的脚本和参数来进行推理和汇报）。当用户提到"模型推理"、"性能测试"、"精度测试"时使用此skill。
+version: "0.4.1-alpha"
+---
+
+# DCU 推理全流程 Skill
+
+当前版本：**v0.4.1-alpha**
+
+## 当前版本特性
+
+- 支持两种工作模式入口：通用完整流程、高自定义流程。
+- 支持读取 `references/node/nodes.md` 中的节点清单，并通过 `hy-smi` 查询 DCU 节点占用、频率、驱动版本和加速卡型号。
+- 支持按 `references/container/create_docker_container.md` 创建 DCU 推理测试容器，包含 DCU 设备、hyhal、模型目录和工作目录挂载规范。
+- 支持服务启动脚本准备：已有脚本直接使用，缺失时可由用户提供或参考现有脚本生成。
+- 支持基于 HYGON-AI `dcu-inference-cookbook/docs/model-deployment/` 的 vLLM/SGLang 最佳实践生成模型服务启动脚本；详见 `references/model_deployment_cookbook.md`。
+- 已内置 vLLM 启动脚本示例：`Qwen3-8B`、`Qwen3-30B-A3B`。
+- 支持通用 LLM 服务就绪监控：`watch_llm_ready.sh` 可监控 vLLM、SGLang 和 OpenAI-compatible 服务，默认探活 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
+- 服务监控采用低 token 状态文件机制：Agent 正常只读取 `/tmp/llm_status.json`，失败或超时时才读取少量日志上下文。
+- 支持 evalscope 精度测试脚本 `eval_accuracy.sh`，并通过 `watch_accuracy.sh` 写入 `/tmp/eval_status.json` 实现长任务后台状态跟踪。
+- 提供精度测试报告模板，覆盖测试时间、节点、镜像、容器、模型、数据集、测试条数、精度结果和备注。
+
+## 当前版本边界
+
+- 性能测试流程仍处于占位阶段，尚未提供标准压测脚本和吞吐/延迟指标汇总。
+- 高自定义模式已有入口描述，但执行步骤还未像完整流程一样细化。
+- 本地模型服务启动脚本样例目前主要覆盖 Qwen3 系列；其他模型优先参考 HYGON-AI cookbook，cookbook 未覆盖时再由用户提供或由 Agent 参考模板生成。
+- 环境安装说明较基础，evalscope/opencompass、数据集准备和离线依赖处理仍需继续补齐。
+- 开发日志记录在 `DEVELOPMENT_LOG.md`，仅在维护 skill 时阅读，普通推理/测试任务不需要加载。
+
+作为高级 AI 测试工程师的辅助助手，本 skill 支持两种种工作模式，在开始时请先向用户确认选择哪种模式。
+
+## 模式选择
+
+调用此 skill 时，首先询问用户：
+
+**请选择工作模式：**
+
+1. **通用完整流程**：查找可用资源→生成脚本→推理→数据整理（单机/多机）
+2. **高自定义**：查找可用资源→配置环境→根据提供的脚本和参数来进行推理和汇报（单机/多机）
+
+---
+
+# 模式一：完整流程
+
+完整流程将查找可用资源、生成脚本、推理、数据整理串联起来。
+
+## 第一步：模型参数收集与计算
+
+### 1.1 查询当前可使用节点环境
+从节点 IP 列表中查询当前空闲节点和对应的可用卡数型号以及基本信息，从references/node/nodes.md中获取当前可用节点信息，并通过ssh命令查询节点的占用情况、频率情况、驱动版本和加速卡型号等信息，整理成表格形式返回给用户。
+
+
+## 第二步：搭建测试环境
+
+### 2.1 容器创建
+根据references/container/create_docker_container.md在上一步指定的节点上创建容器，返回创建好的容器名。
+
+### 2.2 环境配置
+根据用户提供的测试信息，如果包含“精度测试”则需要配置精度测试环境；如果包含“性能测试”则需要配置性能测试环境。
+1. 精度测试环境配置：
+- 安装必要的测试工具（evalscope、opencompass）
+- 准备测试数据集
+2. 性能测试环境配置：
+- 
+
+## 第三步：推理服务与测试
+
+### 3.1 推理服务脚本准备
+
+**启动模型服务必须优先参考 HYGON-AI cookbook 最佳实践：**
+
+在生成或修改 `serve_<模型名>.sh` 之前，先读取 `references/model_deployment_cookbook.md`，并按用户选择的框架和模型族定位外部最佳实践：
+
+- vLLM: `https://github.com/HYGON-AI/dcu-inference-cookbook/tree/main/docs/model-deployment/vllm`
+- SGLang: `https://github.com/HYGON-AI/dcu-inference-cookbook/tree/main/docs/model-deployment/sglang`
+
+执行规则：
+
+1. 先确认或推断推理框架：`vllm` 或 `sglang`。
+2. 根据模型名匹配模型族文档，例如 `qwen3.md`、`qwen3.5.md`、`deepseek-v3.2.md`、`glm-5.md`、`kimi-k2.5.md`。
+3. 从 cookbook 中提取匹配条目的环境变量、启动命令、推荐硬件、卡数、TP/PP/DP、dtype、量化方式、上下文长度、显存比例和特殊优化开关。
+4. 将 cookbook 命令适配到当前容器路径和端口约定；默认模型路径映射为 `/model/<模型名>`。
+5. 生成脚本时不得删除 cookbook 中的 DCU、NUMA、通信、量化、MoE、PD/IFB 调度相关环境变量。
+6. 默认使用 cookbook 中的 IFB 部署方式进行测试；只有用户明确要求 PD 分离模式时，才选择 PD 相关条目或参数。
+7. 匹配 cookbook 条目时必须同时对齐模型、框架、加速卡型号（如 BW1000、BW1100、K100_AI）、卡数和部署方式（IFB/PD）。若当前节点卡型与 cookbook 启动命令对应卡型不一致，不要强行改写命令，直接询问用户是否可以提供适配当前卡型的脚本。
+8. 只有当 cookbook 没有覆盖目标模型/框架/卡型/部署方式组合时，才回退到本地 `scripts/serve_*.sh` 模板或请求用户提供脚本。
+
+生成或确认脚本时，必须向用户说明：
+
+- 使用的框架：`vllm` 或 `sglang`
+- 引用的 cookbook 文件
+- 匹配的模型条目
+- 推荐硬件和卡数
+- 当前节点加速卡型号
+- 部署方式：默认 `IFB`，或用户指定的 `PD`
+- TP/PP/DP、dtype、量化、上下文长度、端口
+- 保留或新增的关键环境变量
+
+---
+
+**读取 `scripts/` 目录，确认是否已有目标模型的启动脚本：**
+
+```bash
+ssh -tt <Node_IP> "docker exec <container_name> ls /workspace/scripts/"
+```
+
+> 注意：容器创建时已将宿主机 `pwd` 挂载到容器 `/mnt`，`scripts/` 目录挂载后位于容器内 `/mnt/scripts/`。
+> 若宿主机 `scripts/` 已同步至容器可访问路径，直接使用；否则先将脚本上传到目标节点。
+
+**已有对应模型脚本：**
+
+优先查找框架感知命名：`serve_<framework>_<模型名>.sh`；兼容旧命名：`serve_<模型名>.sh`。
+
+找到脚本后不要直接启动。必须先按 HYGON-AI cookbook 对应条目做一次轻量校验：
+
+- 框架是否一致（vLLM/SGLang）
+- 模型路径、TP/卡数、dtype、量化参数是否与 cookbook 冲突
+- cookbook 条目的加速卡型号和部署方式是否与当前测试环境一致
+- 关键 DCU 环境变量和特殊优化开关是否缺失
+- 服务端口和日志路径是否明确
+
+若脚本与 cookbook 明显不一致，先向用户展示差异并建议更新脚本；用户确认后再进入 3.2。若主要差异是加速卡型号不匹配，直接询问用户是否能够提供适配当前卡型的启动脚本。
+
+---
+
+**未找到对应模型脚本时，向用户提供两个选项：**
+
+```
+scripts/ 目录下未找到 <模型名> 的启动脚本。请选择：
+
+1. 由您提供脚本内容（直接粘贴或提供路径）
+2. 由我参考 HYGON-AI cookbook 最佳实践自动生成一个新脚本
+```
+
+**选项 1（用户提供）：**
+- 用户粘贴脚本内容后，将其保存为 `scripts/serve_<模型名>.sh`
+- 按 cookbook 对应条目做轻量校验，向用户确认脚本内容后进入 3.2
+
+**选项 2（自动生成）：**
+
+优先读取 HYGON-AI cookbook 对应文档，提取以下关键结构作为模板基础：
+- 环境变量区（DCU、NUMA、通信、量化、MoE、PD/IFB、框架专属优化开关等）
+- 启动命令区（vLLM 的 `vllm serve` 或 SGLang 的 `python3 -m sglang.launch_server`）
+- 推荐配置区（框架版本、推荐硬件、卡数、TP/PP/DP、dtype、量化方式、上下文长度、显存比例、端口）
+- 启动命令元信息（模型条目、加速卡型号、部署方式 IFB/PD、框架版本、推荐卡数）
+
+若 cookbook 未覆盖目标模型/框架组合，再读取 `scripts/` 下现有脚本作为 fallback 模板。
+
+生成规则：
+- **环境变量区完整保留**，不得删改 cookbook 和 `references/rules/dcu_adaptation_rules.md` 中的 DCU 底层环境变量。
+- 模型路径替换为当前容器内实际路径，通常为 `/model/<模型名>`。
+- TP/PP/DP、dtype、量化、上下文长度、显存比例等以 cookbook 匹配条目为准。
+- 默认选择 IFB 部署方式；只有用户明确要求 PD 分离模式时才使用 PD 相关启动命令。
+- 生成脚本开头必须写明当前启动命令对应的元信息，包括模型、框架、cookbook 文件、加速卡型号、部署方式、推荐卡数、TP/PP/DP、dtype、量化方式、端口。
+- vLLM 默认日志建议为 `/tmp/vllm_serve.log`，SGLang 默认日志建议为 `/tmp/sglang_serve.log`。
+- vLLM 默认端口按启动命令或框架默认处理；SGLang 常见端口为 `30000`，若启动命令指定端口则以指定端口为准。
+- 若当前节点加速卡型号与 cookbook 条目不一致，停止自动生成并询问用户是否能够提供适配脚本。
+- 若 cookbook 中没有目标规模的明确 TP，才根据模型规模、可用卡数、加速卡型号和用户目标进行推断，并向用户说明推断依据。
+
+生成后展示脚本全文，**向用户确认后**保存为 `scripts/serve_<模型名>.sh`，再进入 3.2。
+
+---
+
+### 3.2 推理服务启动与监控
+
+**启动服务：**
+
+将脚本上传至目标节点并在容器内以后台模式运行：
+
+```bash
+# 1. 将脚本拷贝到节点（若尚未同步）
+scp scripts/serve_<模型名>.sh <Node_IP>:/tmp/serve_<模型名>.sh
+
+# 2. 在容器内后台执行，日志重定向
+# vLLM 建议日志：/tmp/vllm_serve.log
+# SGLang 建议日志：/tmp/sglang_serve.log
+ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
+  'bash /tmp/serve_<模型名>.sh > <日志路径> 2>&1'"
+```
+
+告知用户：服务已在后台启动，接下来会启动轻量 watcher 监控服务就绪状态。
+
+---
+
+**高效监控原则（必须遵守，适用于 vLLM / SGLang / OpenAI-compatible 服务）：**
+
+- 不要在 Agent 会话中反复读取完整日志，也不要固定 `tail -n 50` 轮询日志正文。
+- 在目标节点宿主机启动后台 watcher，由 watcher 持续检查服务状态并写入小型 JSON 状态文件。
+- 最终就绪判定以 HTTP 探活为准，默认依次尝试 `/health`、`/v1/models`、`/server_info`、`/get_server_info`，任一端点返回 2xx/3xx 才允许触发测试。
+- 日志只用于辅助判断启动进度和失败原因；watcher 每次只扫描新增日志片段，避免重复消费日志。
+- Agent 正常情况下只读取 `/tmp/llm_status.json`；只有 `error` 或 `timeout` 时才读取少量日志上下文。
+
+**上传并启动服务监控脚本：**
+
+```bash
+# 3. 上传 watcher 到目标节点
+scp scripts/watch_llm_ready.sh <Node_IP>:/tmp/watch_llm_ready.sh
+
+# 4a. vLLM 示例（默认端口 8000）
+ssh -tt <Node_IP> "nohup bash /tmp/watch_llm_ready.sh \
+  <container_name> \
+  /tmp/vllm_serve.log \
+  /tmp/llm_status.json \
+  8000 \
+  vllm \
+  '/health,/v1/models' \
+  > /tmp/watch_llm_ready.monitor.log 2>&1 & echo 监控进程PID: $!"
+
+# 4b. SGLang 示例（按实际启动端口替换，常见为 30000）
+ssh -tt <Node_IP> "nohup bash /tmp/watch_llm_ready.sh \
+  <container_name> \
+  /tmp/sglang_serve.log \
+  /tmp/llm_status.json \
+  30000 \
+  sglang \
+  '/health,/v1/models,/server_info,/get_server_info' \
+  > /tmp/watch_llm_ready.monitor.log 2>&1 & echo 监控进程PID: $!"
+```
+
+告知用户：服务已在后台启动，监控进程已运行。后续将读取状态文件判断是否可以触发测试。
+
+---
+
+**状态查询（低 token 轮询）：**
+
+Agent 侧建议每 **30~60 秒** 查询一次，每次只读取 JSON 状态文件：
+
+```bash
+ssh -tt <Node_IP> "cat /tmp/llm_status.json"
+```
+
+根据 `status` 字段处理：
+
+| status 值 | 含义 | 操作 |
+|-----------|------|------|
+| `starting` | 服务仍在加载 | 展示 `message` 和 `last_check`，继续等待 |
+| `almost_ready` | 日志显示服务接近就绪，但 HTTP 探活未确认 | 继续等待下一次状态 |
+| `ready` | HTTP 探活已通过 | 立即进入测试步骤 |
+| `error` | 启动日志中检测到错误 | 展示 `detail`，询问是否排查或重启 |
+| `timeout` | 超过 30 分钟仍未就绪 | 展示 `detail` 和建议操作 |
+
+**只有在 `status == "ready"` 时才能触发精度/性能测试。**
+
+---
+
+**失败或超时时再读取少量日志：**
+
+```bash
+ssh -tt <Node_IP> "docker exec <container_name> tail -n 80 <日志路径>"
+```
+
+不要读取完整日志文件，除非用户明确要求排查完整日志。
+
+---
+
+**ready 状态确认输出：**
+
+当 `/tmp/llm_status.json` 中 `status` 为 `ready` 时，输出以下确认信息：
+
+```
+✅ 推理服务已成功启动！
+
+节点：<Node_IP>
+容器：<container_name>
+模型：<模型名>
+服务端口：<端口>
+日志路径：<日志路径>
+就绪端点：<ready_endpoint>
+
+服务已就绪，可以开始进行测试。
+```
+
+---
+
+**监控超时处理：**
+
+watcher 默认等待 **30 分钟**。若 `/tmp/llm_status.json` 中 `status` 为 `timeout`，告知用户：
+
+```
+⚠️ 服务启动已超过 30 分钟，未检测到就绪信号。
+最近日志摘要如下：
+...（status.detail 字段内容）...
+
+建议操作：
+1. 查看少量日志上下文：docker exec <container_name> tail -n 80 <日志路径>
+2. 检查模型路径是否正确：/model/<模型名>
+3. 检查显存是否充足
+4. 检查探活端点是否可访问：/health、/v1/models、/server_info、/get_server_info
+```
+
+### 3.3 精度测试执行
+
+> 精度测试可能持续数小时乃至 24 小时以上，**不能依赖 Claude 会话保持连接来轮询**。
+> 解决方案：在节点宿主机上启动后台监控进程（`watch_accuracy.sh`），它独立运行、定期写状态文件；
+> 用户随时回来时，Claude 只需读取状态文件即可获知最新进度，无需会话连续。
+
+---
+
+**Step A：确认测试参数**
+
+向用户确认以下信息（未提供则使用默认值）：
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| 模型名 | 与推理服务一致 | 上一步所用模型 |
+| 数据集 | evalscope 支持的数据集名 | `gsm8k` |
+| limit | 测试条数，`0` 表示全量 | `10`（调试），正式测试去掉此参数 |
+
+---
+
+**Step B：上传脚本到节点**
+
+```bash
+scp scripts/eval_accuracy.sh <Node_IP>:/tmp/eval_accuracy.sh
+scp scripts/watch_accuracy.sh <Node_IP>:/tmp/watch_accuracy.sh
+```
+
+---
+
+**Step C：在容器内后台启动精度测试**
+
+```bash
+ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
+  'bash /tmp/eval_accuracy.sh <模型名> <数据集> <limit> \
+   > /tmp/eval_accuracy.log 2>&1'"
+```
+
+---
+
+**Step D：在宿主机上启动后台监控进程**
+
+监控脚本运行在**宿主机**（不是容器内），通过 `nohup` 挂后台，每 5 分钟读一次容器日志、写一次状态文件。这样即使 Claude 会话断开，监控仍在持续运行。
+
+```bash
+ssh -tt <Node_IP> "nohup bash /tmp/watch_accuracy.sh \
+  /tmp/eval_accuracy.log \
+  /tmp/eval_status.json \
+  > /tmp/watch_accuracy.monitor.log 2>&1 & echo 监控进程PID: $!"
+```
+
+告知用户：
+
+```
+✅ 精度测试已在后台启动，监控进程已运行。
+
+节点：<Node_IP>
+容器：<container_name>
+模型：<模型名>
+数据集：<数据集>
+测试日志：/tmp/eval_accuracy.log（容器内）
+状态文件：/tmp/eval_status.json（宿主机）
+
+⏳ 测试可能持续数小时，您可以随时回来查询进度。
+   下次回来时，告诉我"查看精度测试进度"即可。
+```
+
+---
+
+**Step E：用户随时查询进度（按需触发）**
+
+当用户说"查看进度"、"测试跑完了吗"时，执行：
+
+```bash
+# 读取状态文件
+ssh -tt <Node_IP> "cat /tmp/eval_status.json"
+
+# 取最新日志末尾
+ssh -tt <Node_IP> "docker exec <container_name> tail -n 30 /tmp/eval_accuracy.log"
+```
+
+根据状态文件中的 `status` 字段响应：
+
+| status 值 | 含义 | 操作 |
+|-----------|------|------|
+| `running` | 仍在测试 | 展示 `progress` 字段内容，告知用户继续等待 |
+| `done` | 测试完成 | 进入 3.4 收集完整结果 |
+| `error` | 出现错误 | 展示 `result` 字段的报错内容，询问用户是否重试 |
+
+---
+
+### 3.4 日志收集与精度结果提取
+
+测试完成后（状态文件 `status == "done"`），执行完整日志收集：
+
+```bash
+ssh -tt <Node_IP> "docker exec <container_name> cat /tmp/eval_accuracy.log"
+```
+
+从日志中提取：
+- 各数据集的精度数值（accuracy、pass@k 等）
+- 测试耗时（日志首末时间戳相减）
+- 评测样本数量
+- 任何警告或跳过信息
+
+---
+
+## 第四步：精度报告生成
+
+### 4.1 收集报告所需信息
+
+从前序步骤中汇总以下信息：
+
+| 字段 | 来源 |
+|------|------|
+| 测试时间 | 日志首行时间戳 ~ 末行时间戳 |
+| 节点 | 第一步确认的 Node_IP |
+| 所用镜像 | 第二步创建容器时的镜像 ID/名称 |
+| 容器名 | 第二步创建的容器名 |
+| 模型名称 | 用户指定的模型名 |
+| 模型路径 | `/model/<模型名>` |
+| 数据集 | 用户指定的数据集（如 gsm8k） |
+| 测试条数 | limit 参数值，`全量` 表示无限制 |
+| 精度结果 | 从日志中提取的 accuracy 数值 |
+| 备注 | 任何异常、跳过、警告信息 |
+
+### 4.2 输出精度测试报告
+
+```
+╔══════════════════════════════════════════════════════╗
+║              DCU 模型精度测试报告                     ║
+╚══════════════════════════════════════════════════════╝
+
+📅 测试时间
+   开始：<开始时间>
+   结束：<结束时间>
+   耗时：<X 小时 Y 分钟>
+
+🖥️  测试环境
+   节点 IP   : <Node_IP>
+   容器名称  : <container_name>
+   镜像      : <image_id / image_name>
+
+🤖 模型信息
+   模型名称  : <模型名>
+   模型路径  : /model/<模型名>
+   推理服务  : http://127.0.0.1:8000/v1
+
+📊 测试配置
+   数据集    : <数据集名称>
+   测试条数  : <limit 或"全量">
+   批处理大小: 32
+   最大 token: 16384
+   温度      : 0.0
+
+✅ 精度结果
+   <数据集名称> accuracy : <数值>%
+   （如有多个数据集，逐行列出）
+
+📝 备注
+   <无异常 / 或列出警告信息>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+报告输出后，询问用户：
+
+```
+报告已生成。是否需要：
+1. 保存报告到文件（/tmp/accuracy_report_<模型名>_<日期>.txt）
+2. 清理测试容器和临时文件
+3. 继续进行性能测试
+```
