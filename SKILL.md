@@ -1,12 +1,12 @@
 ---
 name: dcu-llmtest-pipeline
 description: DCU模型推理全流程自动化工具。目前支持模式：1)通用完整流程模式(查找可用资源→生成脚本→推理→数据整理)；2)高自定义模式（查找可用资源→配置环境→根据提供的脚本和参数来进行推理和汇报）；3)多模型自动计划模式（查找节点资源→收集模型/卡型/测试类型→查询启动资源需求→生成并确认并行/串行计划表→按波次执行）。当用户提到"模型推理"、"性能测试"、"精度测试"、"批量测试"、"多个模型"、"计划表"时使用此skill。
-version: "0.5.3-alpha"
+version: "0.5.4-alpha"
 ---
 
 # DCU 推理全流程 Skill
 
-当前版本：**v0.5.3-alpha**
+当前版本：**v0.5.4-alpha**
 
 ## 当前版本特性
 
@@ -17,6 +17,7 @@ version: "0.5.3-alpha"
 - 支持服务启动脚本准备：已有脚本直接使用，缺失时可由用户提供或参考现有脚本生成。
 - 支持基于 HYGON-AI `dcu-inference-cookbook/docs/model-deployment/` 的 vLLM/SGLang 最佳实践生成模型服务启动脚本；详见 `references/model_deployment_cookbook.md`。
 - 支持本地 `VLLM测试指导.md` 作为 vLLM 补充方案来源；当 GitHub cookbook 未覆盖目标模型时，读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md` 查找测试方案。
+- `references/VLLM测试指导.md` 已隐去姓名和团队署名，仅保留模型名称、量化属性、卡型和测试方案。
 - 支持通用 LLM 服务就绪监控：`watch_llm_ready.sh` 可监控 vLLM、SGLang 和 OpenAI-compatible 服务，默认探活 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
 - 服务监控采用低 token 状态文件机制：Agent 正常只读取 `/tmp/llm_status.json`，失败或超时时才读取少量日志上下文。
 - 支持 `evalscope` 与 `opencompass` 两种精度评测工具选择；evalscope 可使用 `eval_accuracy.sh`，两者安装方式见 `references/evaluation_framework/install_evaluation_framework.md`。

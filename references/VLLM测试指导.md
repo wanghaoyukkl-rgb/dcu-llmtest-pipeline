@@ -1,8 +1,8 @@
-VLLM测试指导（QTeam）
+VLLM测试指导
 
 （1）模型为二级标题；测试模式为三级标题；加速卡为四级标题；
 
-（2）对应模型需要备注编写人员；
+（2）本文已隐去人员标记，仅保留模型测试方案信息；
 
 （3）模型名称需要与社区命名一致；如果是量化模型需要明确是社区量化还是内部量化；
 
@@ -15,55 +15,55 @@ VLLM测试指导（QTeam）
 # 导航
 
 **导航**
-- Kimi-K2.5-w4a16(官方模型)【王昊宇】
-- Qwen3-30B-A3B【王昊宇】
-- Qwen3-8B【王昊宇】
-- Qwen3-8B.w8a8（非社区量化）【王昊宇】
-- Qwen3-30B-A3B.w8a8(社区量化)【王昊宇】
-- Qwen3-VL-235B-A22B-Thinking【王昊宇】
-- DeepSeek-V3.2-Channel-INT8（非社区量化）【石鹏飞】
-- DeepSeek-V3.2-channel-fp8（非社区量化）【石鹏飞】
-- Qwen3-235B-A22B【石鹏飞】
-- Qwen3-235B-A22B-W8A8（非社区量化）【石鹏飞】
-- Qwen3-235B-A22B-Instruct-2507【马赛赛】
-- Qwen3-32B-W8A8（社区量化）【温瑞华】
-- MiniMax-M2.5-W8A8(社区量化)【温瑞华】
-- MiniMax-M2_5-Channel-FP8-w8a8(内部量化)【温瑞华】
-- MiniMax-M2.5-bf16【温瑞华】
-- Qwen3-32B【温瑞华】
-- Qwen2.5-VL-72B-Instruct【温瑞华】
-- Qwen2.5-VL-72B-Instruct-quantized.w8a8（社区量化）【胡雅晴】
-- GLM-5-w4a8-V2_6_test（非社区量化）【胡雅晴】
-- GLM-5-W8A8（社区量化）【胡雅晴】
-- GLM5-Channelwise-FP8-quantized（社区量化）【胡雅晴】
-- DeepSeek-R1-Distill-Llama-70B【郭晨阳】
-- DeepSeek-R1-Distill-Qwen-32B【郭晨阳】
-- GLM4.7-w8a8【刘治宦】
-- GLM5.1-Channel-INT8【刘治宦】
-- GLM5.1-Channel-FP8【刘治宦】
-- Qwen3-VL-30B-A3B-Thinking【刘治宦】
-- DeepSeek-R1-Channel-INT8【马赛赛】
-- DeepSeek-R1-Channe-FP8[马赛赛]
-- Qwen3-VL-235B-A22B-Instruct【朱明翠】
-- Qwen3-Coder-480B-A35B-Instruct-w8a8【朱明翠】
-- Qwen3-Coder-480B-A35B-Instruct-FP8-Dynamic【朱明翠】
-- DeepSeek-R1-0528-W4A8-V2【朱明翠】
-- Qwen3-4B-Thinking-2507【马赛赛】
-- QwQ-32B【赵自广】
-- DeepSeek-R1-bf16【马赛赛】
-- Qwen3-Next-80B-A3B-Instruct【赵自广】
-- Qwen3-0.6B/Qwen3-4B【赵自广】
-- Qwen3.5-122B-A10B【赵自广】
-- GLM-4-32B-0414【胡雅晴】
-- DeepSeek-V3.1-Terminus-fp8【胡雅晴】
-- DeepSeek-R1-Distill-Llama-70B-quantized.w8a8【郭晨阳】
-- Qwen3.5-35B-A3B & Qwen3.5-35B-A3B-W8A8【郭晨阳】
-- DeepSeek-V3-W4A8-V2 【郭晨阳】
-- Qwen3-VL-32B-Instruct【郭晨阳】
-- Qwen2.5-VL-32B-Instruct【郭晨阳】
-- Qwen3-VL-4B-Instruct【郭晨阳】
+- Kimi-K2.5-w4a16(官方模型)
+- Qwen3-30B-A3B
+- Qwen3-8B
+- Qwen3-8B.w8a8（非社区量化）
+- Qwen3-30B-A3B.w8a8(社区量化)
+- Qwen3-VL-235B-A22B-Thinking
+- DeepSeek-V3.2-Channel-INT8（非社区量化）
+- DeepSeek-V3.2-channel-fp8（非社区量化）
+- Qwen3-235B-A22B
+- Qwen3-235B-A22B-W8A8（非社区量化）
+- Qwen3-235B-A22B-Instruct-2507
+- Qwen3-32B-W8A8（社区量化）
+- MiniMax-M2.5-W8A8(社区量化)
+- MiniMax-M2_5-Channel-FP8-w8a8(内部量化)
+- MiniMax-M2.5-bf16
+- Qwen3-32B
+- Qwen2.5-VL-72B-Instruct
+- Qwen2.5-VL-72B-Instruct-quantized.w8a8（社区量化）
+- GLM-5-w4a8-V2_6_test（非社区量化）
+- GLM-5-W8A8（社区量化）
+- GLM5-Channelwise-FP8-quantized（社区量化）
+- DeepSeek-R1-Distill-Llama-70B
+- DeepSeek-R1-Distill-Qwen-32B
+- GLM4.7-w8a8
+- GLM5.1-Channel-INT8
+- GLM5.1-Channel-FP8
+- Qwen3-VL-30B-A3B-Thinking
+- DeepSeek-R1-Channel-INT8
+- DeepSeek-R1-Channe-FP8
+- Qwen3-VL-235B-A22B-Instruct
+- Qwen3-Coder-480B-A35B-Instruct-w8a8
+- Qwen3-Coder-480B-A35B-Instruct-FP8-Dynamic
+- DeepSeek-R1-0528-W4A8-V2
+- Qwen3-4B-Thinking-2507
+- QwQ-32B
+- DeepSeek-R1-bf16
+- Qwen3-Next-80B-A3B-Instruct
+- Qwen3-0.6B/Qwen3-4B
+- Qwen3.5-122B-A10B
+- GLM-4-32B-0414
+- DeepSeek-V3.1-Terminus-fp8
+- DeepSeek-R1-Distill-Llama-70B-quantized.w8a8
+- Qwen3.5-35B-A3B & Qwen3.5-35B-A3B-W8A8
+- DeepSeek-V3-W4A8-V2
+- Qwen3-VL-32B-Instruct
+- Qwen2.5-VL-32B-Instruct
+- Qwen3-VL-4B-Instruct
 
-## Kimi-K2.5-w4a16(官方模型)【王昊宇】
+## Kimi-K2.5-w4a16(官方模型)
 
 ### 测试模式
 
@@ -146,7 +146,7 @@ export VLLM_USE_V1=1
 -pp 2 -tp8 \
 ```
 
-## Qwen3-30B-A3B【王昊宇】
+## Qwen3-30B-A3B
 
 ### 测试模式
 
@@ -180,7 +180,7 @@ vllm serve Qwen/Qwen3-30B-A3B  \
 -tp 2
 ```
 
-## Qwen3-8B【王昊宇】
+## Qwen3-8B
 
 ### 测试模式
 
@@ -213,7 +213,7 @@ vllm serve Qwen/Qwen3-8B  \
 
 暂无
 
-## Qwen3-8B.w8a8（非社区量化）【王昊宇】
+## Qwen3-8B.w8a8（非社区量化）
 
 ### 测试模式
 
@@ -246,7 +246,7 @@ vllm serve Qwen/Qwen3-8B.w8a8  \
 
 暂无
 
-## Qwen3-30B-A3B.w8a8(社区量化)【王昊宇】
+## Qwen3-30B-A3B.w8a8(社区量化)
 
 ### 测试模式
 
@@ -280,7 +280,7 @@ vllm serve Qwen/Qwen3-30B-A3B.w8a8  \
 -tp 2
 ```
 
-## Qwen3-VL-235B-A22B-Thinking【王昊宇】
+## Qwen3-VL-235B-A22B-Thinking
 
 ### 测试模式
 
@@ -339,7 +339,7 @@ vllm serve /model/Qwen3-VL-235BB-A22B-Thinking  \
 
 暂无
 
-## DeepSeek-V3.2-Channel-INT8（非社区量化）【石鹏飞】
+## DeepSeek-V3.2-Channel-INT8（非社区量化）
 
 ### 测试模式
 
@@ -410,7 +410,7 @@ tp=16
 
 不支持
 
-## DeepSeek-V3.2-channel-fp8（非社区量化）【石鹏飞】
+## DeepSeek-V3.2-channel-fp8（非社区量化）
 
 ### 测试模式
 
@@ -486,7 +486,7 @@ vllm serve ${model_path} \
 
 不支持
 
-## Qwen3-235B-A22B【石鹏飞】
+## Qwen3-235B-A22B
 
 ### 测试模式
 
@@ -566,7 +566,7 @@ gpu_memory=0.9
 
 不支持
 
-## Qwen3-235B-A22B-W8A8（非社区量化）【石鹏飞】
+## Qwen3-235B-A22B-W8A8（非社区量化）
 
 ### 测试模式
 
@@ -668,7 +668,7 @@ export VLLM_RANK7_NUMA=3
 
 不支持
 
-## Qwen3-235B-A22B-Instruct-2507【马赛赛】
+## Qwen3-235B-A22B-Instruct-2507
 
 ### 测试模式
 
@@ -708,7 +708,7 @@ vllm serve /Qwen/Qwen3-235B-A22B-Instruct-2507 \
 有bug，待重新测试
 ```
 
-## Qwen3-32B-W8A8（社区量化）【温瑞华】
+## Qwen3-32B-W8A8（社区量化）
 
 ### 测试模式
 
@@ -768,7 +768,7 @@ vllm serve $model_path \
 
 不需要--kv-cache-dtype 参数
 
-## MiniMax-M2.5-W8A8(社区量化)【温瑞华】
+## MiniMax-M2.5-W8A8(社区量化)
 
 ### 测试模式
 
@@ -863,7 +863,7 @@ vllm serve ${model_path} \
 
 不需要--kv-cache-dtype 参数
 
-## MiniMax-M2_5-Channel-FP8-w8a8(内部量化)【温瑞华】
+## MiniMax-M2_5-Channel-FP8-w8a8(内部量化)
 
 https://www.modelscope.cn/models/hygon/MiniMax-M2.5-Channel-FP8-w8a8
 
@@ -944,7 +944,7 @@ vllm serve ${model_path} \
  --disable-cascade-attn \
  2>&1 | tee "${log_dir}/serve_${time}.log"
 
-## MiniMax-M2.5-bf16【温瑞华】
+## MiniMax-M2.5-bf16
 
 ### 测试模式
 
@@ -1034,7 +1034,7 @@ vllm serve ${model_path} \
 
 预估需要双机16卡,目前暂无最佳实践
 
-## Qwen3-32B【温瑞华】
+## Qwen3-32B
 
 ### 测试模式
 
@@ -1095,7 +1095,7 @@ vllm serve $model_path \
 
 不需要--kv-cache-dtype 参数
 
-## Qwen2.5-VL-72B-Instruct【温瑞华】
+## Qwen2.5-VL-72B-Instruct
 
 ### 测试模式
 
@@ -1168,7 +1168,7 @@ vllm serve $model_path \
 
 有bug
 
-## Qwen2.5-VL-72B-Instruct-quantized.w8a8（社区量化）【胡雅晴】
+## Qwen2.5-VL-72B-Instruct-quantized.w8a8（社区量化）
 
 ### 测试模式
 
@@ -1219,7 +1219,7 @@ VLLM_USE_PD_SPLIT=1  VLLM_USE_V1=1 vllm serve ${model_path} \
     --max-model-len 40960 \
     --limit-mm-per-prompt '{"image": 255, "video": 1}'  >&1 | tee  ${logpath}/server.log
 
-#### BW1000（胡雅晴）
+#### BW1000
 
 ```text
 修改为：--kv-cache-dtype fp8_e5m2
@@ -1237,7 +1237,7 @@ VLLM_USE_PD_SPLIT=1  VLLM_USE_V1=1 vllm serve ${model_path} \
 去掉参数：--kv-cache-dtype fp8_e4m3
 ```
 
-## GLM-5-w4a8-V2_6_test（非社区量化）【胡雅晴】
+## GLM-5-w4a8-V2_6_test（非社区量化）
 
 ```bash
 rm -rf ~/.cache
@@ -1289,7 +1289,7 @@ vllm serve "$MODEL_PATH" \
     -cc '{"pass_config": {"fuse_act_quant": false}}' \
     --speculative_config '{"method": "mtp", "num_speculative_tokens": 2, "quantization": "slimquant_w4a8_marlin"}' >&1 | tee server/server-GLM-5-w4a8-tp8-0515-nmz.log
 
-#### BW1000（胡雅晴）
+#### BW1000
 
 ```text
 同测试模式
@@ -1305,7 +1305,7 @@ vllm serve "$MODEL_PATH" \
 
 不支持
 
-## GLM-5-W8A8（社区量化）【胡雅晴】
+## GLM-5-W8A8（社区量化）
 
 ### 测试模式
 
@@ -1353,7 +1353,7 @@ vllm serve /mnt/model/vllm-w8a8-models/GLM-5-W8A8/  \
     -cc '{"pass_config": {"fuse_act_quant": false}}' \
     --speculative_config '{"method": "mtp", "num_speculative_tokens": 2, "quantization": "slimquant_marlin"}'  >&1 | tee server/server-GLM-5-w8a8-tp8-0515-nmz.log
 
-#### BW1000（胡雅晴）
+#### BW1000
 
 ```text
 同测试模式，16卡测试
@@ -1369,7 +1369,7 @@ vllm serve /mnt/model/vllm-w8a8-models/GLM-5-W8A8/  \
 
 不支持
 
-## GLM5-Channelwise-FP8-quantized（社区量化）【胡雅晴】
+## GLM5-Channelwise-FP8-quantized（社区量化）
 
 ### 测试模式
 
@@ -1465,7 +1465,7 @@ vllm serve "$MODEL_PATH" \
     --speculative_config '{"method": "mtp", "num_speculative_tokens": 2, "quantization": "slimquant_marlin"}' \
     2>&1 | tee ${LOG_FILE}
 
-#### BW1000（胡雅晴）
+#### BW1000
 
 ```text
 同测试模式，16卡测试
@@ -1481,7 +1481,7 @@ vllm serve "$MODEL_PATH" \
 
 不支持
 
-## DeepSeek-R1-Distill-Llama-70B【郭晨阳】
+## DeepSeek-R1-Distill-Llama-70B
 
 ### 测试模式
 
@@ -1513,7 +1513,7 @@ vllm serve ${model_path} \
     2>&1 | tee "${log_dir}/serve_${time}.log"
 ```
 
-#### BW1000（郭晨阳）
+#### BW1000
 
 ```text
 同测试模式
@@ -1551,7 +1551,7 @@ vllm serve ${model_path} \
     2>&1 | tee "${log_dir}/serve_${time}.log"
 ```
 
-## DeepSeek-R1-Distill-Qwen-32B【郭晨阳】
+## DeepSeek-R1-Distill-Qwen-32B
 
 ### 测试模式
 
@@ -1584,7 +1584,7 @@ vllm serve ${model_path} \
     --port $port \
     2>&1 | tee "${log_dir}/serve_${time}.log"
 
-#### BW1000（郭晨阳）
+#### BW1000
 
 ```text
 同测试模式
@@ -1622,7 +1622,7 @@ vllm serve ${model_path} \
     2>&1 | tee "${log_dir}/serve_${time}.log"
 ```
 
-## GLM4.7-w8a8【刘治宦】
+## GLM4.7-w8a8
 
 bf16原版模型去除marlin测试
 
@@ -1728,7 +1728,7 @@ export VLLM_V1_USE_FUSED_QKV_SPLIT_RMS_ROPE_KVSTORE=0
 export VLLM_REJECT_SAMPLE_OPT=0
 vllm serve /model/GLM-4.7-W8A8  --disable-cascade-attn  --host 0.0.0.0 --port 9348  --trust-remote-code --disable-log-requests -tp 8 --max-num-seqs 256  --max-model-len 40960 --gpu-memory-utilization 0.9 --max_num_batched_tokens 40960  --enable-chunked-prefill --enable-prefix-caching --dtype bfloat16  -cc '{"inductor_compile_config":{"combo_kernels": false}}' --speculative_config '{"method": "mtp", "num_speculative_tokens": 2}'
 
-## GLM5.1-Channel-INT8【刘治宦】
+## GLM5.1-Channel-INT8
 
 #### NMZ
 
@@ -1796,7 +1796,7 @@ vllm serve "$MODEL_PATH" \
     -cc '{"pass_config": {"fuse_act_quant": false}}' \
     --speculative_config '{"method": "mtp", "num_speculative_tokens": 2, "quantization": "slimquant_marlin"}'
 
-## GLM5.1-Channel-FP8【刘治宦】
+## GLM5.1-Channel-FP8
 
 #### NMZ
 
@@ -1866,7 +1866,7 @@ vllm serve "$MODEL_PATH" \
     -cc '{"pass_config": {"fuse_act_quant": false}}' \
     --speculative_config '{"method": "mtp", "num_speculative_tokens": 2, "quantization": "slimquant_marlin"}'
 
-## Qwen3-VL-30B-A3B-Thinking【刘治宦】
+## Qwen3-VL-30B-A3B-Thinking
 
 ### 测试模式
 
@@ -1952,7 +1952,7 @@ vllm serve ${model_path} \
     --enable-prefix-caching --enable-chunked-prefill --disable-cascade-attn >&1 | tee  ${logpath}.log
 ```
 
-## DeepSeek-R1-Channel-INT8【马赛赛】
+## DeepSeek-R1-Channel-INT8
 
 #### 测试模式
 
@@ -2034,7 +2034,7 @@ BMZ带--kv-cache-dtype gsm8k精度有问题
 JavaScript
 有bug，待重新测试
 
-## DeepSeek-R1-Channe-FP8[马赛赛]
+## DeepSeek-R1-Channe-FP8
 
 #### 测试模式
 
@@ -2110,7 +2110,7 @@ vllm serve /model/vllm-fp8-models/DeepSeek-R1-Channel-FP8 \
 不支持fp8
 ```
 
-## Qwen3-VL-235B-A22B-Instruct【朱明翠】
+## Qwen3-VL-235B-A22B-Instruct
 
 需降级transformers：pip install transformers==4.57
 
@@ -2198,7 +2198,7 @@ python3 -m vllm.entrypoints.openai.api_server \
 export VLLM_PCIE_USE_CUSTOM_ALLREDUCE=1 #K100AI
 ```
 
-## Qwen3-Coder-480B-A35B-Instruct-w8a8【朱明翠】
+## Qwen3-Coder-480B-A35B-Instruct-w8a8
 
 #### 测试模式
 
@@ -2257,7 +2257,7 @@ vllm serve /public/opendas/DL_DATA/llm-models/Qwen3-Coder-480B-A35B-Instruct-W8A
 export VLLM_PCIE_USE_CUSTOM_ALLREDUCE=1 #K100AI
 ```
 
-## Qwen3-Coder-480B-A35B-Instruct-FP8-Dynamic【朱明翠】
+## Qwen3-Coder-480B-A35B-Instruct-FP8-Dynamic
 
 #### 测试模式
 
@@ -2323,7 +2323,7 @@ vllm serve /public/opendas/DL_DATA/llm-models/qwen3/Qwen3-Coder-480B-A35B-Instru
 不支持fp8
 ```
 
-## DeepSeek-R1-0528-W4A8-V2【朱明翠】
+## DeepSeek-R1-0528-W4A8-V2
 
 #### 测试模式
 
@@ -2463,7 +2463,7 @@ vllm serve ${model_path} \
 暂无
 ```
 
-## Qwen3-4B-Thinking-2507【马赛赛】
+## Qwen3-4B-Thinking-2507
 
 #### 测试模式
 
@@ -2501,7 +2501,7 @@ vllm serve /model/qwen3/Qwen3-4B-Thinking-2507 \
 同测试模式
 ```
 
-## QwQ-32B【赵自广】
+## QwQ-32B
 
 ### 测试模式
 
@@ -2544,7 +2544,7 @@ Python
 暂无
 ```
 
-## DeepSeek-R1-bf16【马赛赛】
+## DeepSeek-R1-bf16
 
 ```bash
 ```
@@ -2627,7 +2627,7 @@ Python
 待测试
 ```
 
-## Qwen3-Next-80B-A3B-Instruct【赵自广】
+## Qwen3-Next-80B-A3B-Instruct
 
 ```bash
 export HIP_VISIBLE_DEVICES=1,2,3,4
@@ -2657,7 +2657,7 @@ vllm serve ${model_path} \
 
 进入容器需要修改代码：修改 /usr/local/lib/python3.10/dist-packages/vllm/v1/attention/ops/triton_unified_attention.py中的996行，将if not use_fa_unified_2d改为True
 
-## Qwen3-0.6B/Qwen3-4B【赵自广】
+## Qwen3-0.6B/Qwen3-4B
 
 ```text
 export HIP_VISIBLE_DEVICES=2
@@ -2689,7 +2689,7 @@ export VLLM_USE_PICEWISE=1
 
 暂无
 
-## Qwen3.5-122B-A10B【赵自广】
+## Qwen3.5-122B-A10B
 
 ```bash
 
@@ -2727,7 +2727,7 @@ export VLLM_HCU_USE_CUSTOM_TOPK_TOPP_SAMPLER=1
 
 暂无
 
-## GLM-4-32B-0414【胡雅晴】
+## GLM-4-32B-0414
 
 ### 测试模式
 
@@ -2802,7 +2802,7 @@ vllm serve ${model_path} \
 去除 --kv-cache-dtype fp8_e5m2
 ```
 
-## DeepSeek-V3.1-Terminus-fp8【胡雅晴】
+## DeepSeek-V3.1-Terminus-fp8
 
 ### 测试模式
 
@@ -2897,7 +2897,7 @@ vllm serve ${model_path} \
 
 不支持
 
-## DeepSeek-R1-Distill-Llama-70B-quantized.w8a8【郭晨阳】
+## DeepSeek-R1-Distill-Llama-70B-quantized.w8a8
 
 ### 测试模式
 
@@ -2965,7 +2965,7 @@ vllm serve ${model_path} \
     2>&1 | tee "${log_dir}/serve_${time}.log"
 ```
 
-## Qwen3.5-35B-A3B & Qwen3.5-35B-A3B-W8A8【郭晨阳】
+## Qwen3.5-35B-A3B & Qwen3.5-35B-A3B-W8A8
 
 ### 测试模式
 
@@ -3046,7 +3046,7 @@ vllm serve ${model_path} \
     2>&1 | tee "${log_dir}/serve_${time}.log"
 ```
 
-## DeepSeek-V3-W4A8-V2 【郭晨阳】
+## DeepSeek-V3-W4A8-V2
 
 ### 测试模式
 
@@ -3122,7 +3122,7 @@ vllm serve ${model_path} \
 
 server报错  有bug
 
-## Qwen3-VL-32B-Instruct【郭晨阳】
+## Qwen3-VL-32B-Instruct
 
 ### 测试模式
 
@@ -3197,7 +3197,7 @@ vllm serve ${model_path} \
 同测试模式
 ```
 
-## Qwen2.5-VL-32B-Instruct【郭晨阳】
+## Qwen2.5-VL-32B-Instruct
 
 ### 测试模式
 
@@ -3253,7 +3253,7 @@ VLLM_USE_PD_SPLIT=1  VLLM_USE_V1=1 vllm serve ${model_path} \
 同测试模式
 ```
 
-## Qwen3-VL-4B-Instruct【郭晨阳】
+## Qwen3-VL-4B-Instruct
 
 ### 测试模式
 
