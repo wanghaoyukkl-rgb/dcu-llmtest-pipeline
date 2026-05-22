@@ -20,7 +20,8 @@
 5. 在对应目录中定位最佳实践文件，并匹配模型、框架、加速卡型号、卡数和部署方式。
 6. 优先复用文档中的环境变量、启动命令、TP/PP/DP 配置、dtype、量化参数、上下文长度、显存比例、调度参数和特殊优化开关。
 7. 将 cookbook 命令适配到本 skill 的容器和模型挂载约定：
-   - 容器内模型路径通常为 `/model/<模型名>`。
+   - 容器内模型路径固定为 `/model/<模型名>`，由容器创建时 `-v <宿主模型路径>:/model/<模型名>:ro` 保证。
+   - vLLM 和 SGLang 启动命令中的 model path 都必须使用 `/model/<模型名>`，不得直接使用宿主机路径。
    - 服务日志写入 `/tmp/<framework>_serve.log`。
    - 服务启动后使用 `watch_llm_ready.sh` 写入 `/tmp/llm_status.json`。
 8. 若当前节点加速卡型号与 cookbook 条目不一致，不要强行改写命令，优先询问用户是否可以换用匹配卡型节点或提供适配当前卡型的脚本。
@@ -76,7 +77,7 @@ sed -n '1,220p' /tmp/dcu-inference-cookbook/docs/model-deployment/sglang/qwen3.m
 ## 适配规则
 
 - 不得删除 cookbook 中与 DCU、NUMA、通信、量化、MoE、PD/IFB 调度相关的环境变量，除非用户明确要求。
-- 若 cookbook 中的模型路径是 ModelScope/HuggingFace ID，而本地容器使用 `/model/<模型名>`，只替换模型路径，不改其他优化参数。
+- 若 cookbook 中的模型路径是 ModelScope/HuggingFace ID 或其他历史路径，而本地容器使用 `/model/<模型名>`，只替换模型路径，不改其他优化参数。
 - vLLM 常见端口为 `8000`，SGLang 常见端口为 `30000`；若用户脚本或 cookbook 明确指定端口，以指定端口为准。
 - SGLang 启动命令通常为 `python3 -m sglang.launch_server` 或 `python -m sglang.launch_server`。
 - vLLM 启动命令通常为 `vllm serve`。
