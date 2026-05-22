@@ -1,5 +1,27 @@
 # dcu-llmtest-pipeline 开发日志
 
+## v0.5.2-alpha - 2026-05-22
+
+### 主要变化
+
+- 将 `references/VLLM测试指导.docx` 转换为 `references/VLLM测试指导.md`，后续补充测试方案直接读取 Markdown。
+- 移除二进制 DOCX 副本，降低仓库体积并提升 GitHub diff 可读性。
+- 删除 `scripts/serve_Qwen3-8B.sh` 和 `scripts/serve_Qwen3-30B-A3B.sh`，避免 cookbook-first 规则下继续依赖旧示例脚本。
+- 更新 `SKILL.md`、`references/vllm_test_guidance.md`、`references/model_deployment_cookbook.md`、`references/auto_test_plan.md` 中的引用路径。
+- 保留 `watch_vllm_ready.sh` 作为兼容入口，暂不删除。
+
+## v0.5.1-alpha - 2026-05-22
+
+### 主要变化
+
+- 新增 `references/VLLM测试指导.docx`，作为 HYGON-AI cookbook 未覆盖模型的 vLLM 补充测试方案来源。该文件在 v0.5.2-alpha 中已转换为 Markdown 并移除二进制副本。
+- 新增 `references/vllm_test_guidance.md`，记录 DOCX 使用规则、模型索引、卡型别名映射和 blocked 状态处理。
+- `SKILL.md` 版本号升级为 `v0.5.1-alpha`。
+- 明确测试方案查找顺序：HYGON-AI cookbook 优先；cookbook 未覆盖且框架为 vLLM 时，再查 `VLLM测试指导.docx`；仍找不到则要求用户提供脚本。
+- 明确 DOCX 卡型映射：`NMZ` -> `BW1100/BW1101`，`BMZ` -> `BW1000`，`KME` -> `K100AI`。
+- 更新自动计划规则：模型资源需求查询可使用 DOCX 补充来源，计划表来源字段需标明 cookbook 或 DOCX。
+- 对 DOCX 中 `暂无`、`不支持`、`有bug`、`待重新测试`、`预估需要双机` 等状态，要求标记 blocked 并询问用户处理方式。
+
 ## v0.5.0-alpha - 2026-05-22
 
 ### 版本定位

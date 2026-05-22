@@ -1,12 +1,12 @@
 ---
 name: dcu-llmtest-pipeline
 description: DCU模型推理全流程自动化工具。目前支持模式：1)通用完整流程模式(查找可用资源→生成脚本→推理→数据整理)；2)高自定义模式（查找可用资源→配置环境→根据提供的脚本和参数来进行推理和汇报）；3)多模型自动计划模式（查找节点资源→收集模型/卡型/测试类型→查询启动资源需求→生成并确认并行/串行计划表→按波次执行）。当用户提到"模型推理"、"性能测试"、"精度测试"、"批量测试"、"多个模型"、"计划表"时使用此skill。
-version: "0.5.0-alpha"
+version: "0.5.2-alpha"
 ---
 
 # DCU 推理全流程 Skill
 
-当前版本：**v0.5.0-alpha**
+当前版本：**v0.5.2-alpha**
 
 ## 当前版本特性
 
@@ -16,6 +16,7 @@ version: "0.5.0-alpha"
 - 支持按 `references/container/create_docker_container.md` 创建 DCU 推理测试容器，包含 DCU 设备、hyhal、模型目录和工作目录挂载规范。
 - 支持服务启动脚本准备：已有脚本直接使用，缺失时可由用户提供或参考现有脚本生成。
 - 支持基于 HYGON-AI `dcu-inference-cookbook/docs/model-deployment/` 的 vLLM/SGLang 最佳实践生成模型服务启动脚本；详见 `references/model_deployment_cookbook.md`。
+- 支持本地 `VLLM测试指导.md` 作为 vLLM 补充方案来源；当 GitHub cookbook 未覆盖目标模型时，读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md` 查找测试方案。
 - 已内置 vLLM 启动脚本示例：`Qwen3-8B`、`Qwen3-30B-A3B`。
 - 支持通用 LLM 服务就绪监控：`watch_llm_ready.sh` 可监控 vLLM、SGLang 和 OpenAI-compatible 服务，默认探活 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
 - 服务监控采用低 token 状态文件机制：Agent 正常只读取 `/tmp/llm_status.json`，失败或超时时才读取少量日志上下文。
@@ -107,10 +108,22 @@ version: "0.5.0-alpha"
 7. 匹配 cookbook 条目时必须同时对齐模型、框架、加速卡型号（如 BW1000、BW1100、K100_AI）、卡数和部署方式（IFB/PD）。若当前节点卡型与 cookbook 启动命令对应卡型不一致，不要强行改写命令，直接询问用户是否可以提供适配当前卡型的脚本。
 8. 只有当 cookbook 没有覆盖目标模型/框架/卡型/部署方式组合时，才回退到本地 `scripts/serve_*.sh` 模板或请求用户提供脚本。
 
+**vLLM 补充方案来源：**
+
+若 HYGON-AI cookbook 未覆盖目标模型，且用户选择的框架为 `vllm`，再读取 `references/vllm_test_guidance.md`，从 `references/VLLM测试指导.md` 中查找模型测试方案。
+
+本地补充文档中的卡型别名必须规范化：
+
+- `NMZ` / `nmz` -> `BW1100` 或 `BW1101`
+- `BMZ` / `bmz` / `BW1000` -> `BW1000`
+- `KME` / `K100_AI` / `K100AI` -> `K100AI`
+
+如果 cookbook 和本地补充文档都找不到目标模型/卡型/部署方式，或补充文档对应卡型标记为 `暂无`、`不支持`、`有bug`、`待重新测试`、`预估需要双机`，必须询问用户是否能够提供适配脚本，不要自动编写启动命令。
+
 生成或确认脚本时，必须向用户说明：
 
 - 使用的框架：`vllm` 或 `sglang`
-- 引用的 cookbook 文件
+- 引用的 cookbook 文件，或本地补充来源
 - 匹配的模型条目
 - 推荐硬件和卡数
 - 当前节点加速卡型号

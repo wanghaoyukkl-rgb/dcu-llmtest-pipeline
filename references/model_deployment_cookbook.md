@@ -23,8 +23,11 @@
    - 容器内模型路径通常为 `/model/<模型名>`。
    - 服务日志写入 `/tmp/<framework>_serve.log`。
    - 服务启动后使用 `watch_llm_ready.sh` 写入 `/tmp/llm_status.json`。
-8. 若当前节点加速卡型号与 cookbook 条目不一致，不要强行改写命令，直接询问用户是否能够提供适配当前卡型的脚本。
-9. 只有在 cookbook 没有覆盖目标模型/框架/卡型/部署方式组合时，才参考 `scripts/serve_*.sh` 中的本地模板或向用户请求脚本。
+8. 若当前节点加速卡型号与 cookbook 条目不一致，不要强行改写命令，优先询问用户是否可以换用匹配卡型节点或提供适配当前卡型的脚本。
+9. 只有在 cookbook 没有覆盖目标模型/框架/卡型/部署方式组合时，才进入补充来源：
+   - `vllm` 框架：读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md` 查找补充测试方案。
+   - `sglang` 框架：若 cookbook 未覆盖，直接请求用户提供脚本。
+10. 如果补充来源仍找不到目标模型/卡型/部署方式，才参考 `scripts/serve_*.sh` 中的本地模板或请求用户提供脚本。
 
 ## 当前已确认的 cookbook 文件
 
@@ -78,4 +81,5 @@ sed -n '1,220p' /tmp/dcu-inference-cookbook/docs/model-deployment/sglang/qwen3.m
 - SGLang 启动命令通常为 `python3 -m sglang.launch_server` 或 `python -m sglang.launch_server`。
 - vLLM 启动命令通常为 `vllm serve`。
 - 生成脚本开头必须写明启动命令元信息：模型、框架、cookbook 文件、加速卡型号、部署方式、推荐卡数、TP/PP/DP、dtype、量化方式、端口。
-- 生成脚本后必须向用户展示关键差异：引用的 cookbook 文件、匹配的模型条目、当前节点卡型、cookbook 卡型、部署方式、卡数/TP、dtype、量化方式、端口、被保留的关键环境变量。
+- 若启动方案来自本地补充来源，元信息中的来源文件写为 `references/VLLM测试指导.md`，并写明模型标题和卡型小节。
+- 生成脚本后必须向用户展示关键差异：引用的 cookbook 文件或本地补充来源、匹配的模型条目、当前节点卡型、来源卡型、部署方式、卡数/TP、dtype、量化方式、端口、被保留的关键环境变量。

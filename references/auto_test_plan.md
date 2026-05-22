@@ -56,7 +56,7 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 
 ### Step 3：查询模型启动资源需求
 
-对每个模型，根据 `references/model_deployment_cookbook.md` 到 HYGON-AI cookbook 中查询：
+对每个模型，先根据 `references/model_deployment_cookbook.md` 到 HYGON-AI cookbook 中查询；若 cookbook 未覆盖且框架为 `vllm`，再根据 `references/vllm_test_guidance.md` 到 `references/VLLM测试指导.md` 中查询补充测试方案：
 
 - cookbook 文件路径
 - 匹配模型条目
@@ -69,18 +69,21 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 - 上下文长度
 - 框架版本
 - 特殊环境变量和启动参数
+- 来源：cookbook 文件或本地补充文档模型标题/卡型小节
 
-若 cookbook 中目标模型/框架/卡型/部署方式没有匹配条目：
+若 cookbook 和本地补充来源中目标模型/框架/卡型/部署方式都没有匹配条目：
 
 - 标记为 `blocked: need_script`
 - 询问用户是否能够提供适配当前卡型的启动脚本
 - 不要将该任务自动排入执行计划
 
-若 cookbook 条目卡型与用户目标卡型或当前节点卡型不一致：
+若来源条目卡型与用户目标卡型或当前节点卡型不一致：
 
 - 标记为 `blocked: card_mismatch`
-- 展示 cookbook 卡型和当前卡型差异
+- 展示来源卡型和当前卡型差异
 - 询问用户是否提供脚本或改用匹配卡型节点
+
+本地测试指导中的卡型别名必须先规范化：`NMZ` -> `BW1100/BW1101`，`BMZ` -> `BW1000`，`KME`/`K100_AI` -> `K100AI`。
 
 ### Step 4：端口分配
 
