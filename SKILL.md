@@ -1,43 +1,12 @@
 ---
 name: dcu-llmtest-pipeline
 description: DCU模型推理全流程自动化工具。目前支持模式：1)通用完整流程模式(查找可用资源→生成脚本→推理→数据整理)；2)高自定义模式（查找可用资源→配置环境→根据提供的脚本和参数来进行推理和汇报）；3)多模型自动计划模式（查找节点资源→收集模型/卡型/测试类型→查询启动资源需求→生成并确认并行/串行计划表→按波次执行）。当用户提到"模型推理"、"性能测试"、"精度测试"、"批量测试"、"多个模型"、"计划表"时使用此skill。
-version: "0.5.6-alpha"
+version: "0.5.7-alpha"
 ---
 
 # DCU 推理全流程 Skill
 
-当前版本：**v0.5.6-alpha**
-
-## 当前版本特性
-
-- 支持两种工作模式入口：通用完整流程、高自定义流程。
-- 支持多模型自动计划模式：查找节点资源、收集模型/卡型/测试类型、查询 cookbook 资源需求、生成并行/串行计划表，用户确认后按波次执行。
-- 支持读取 `references/node/nodes.md` 中的节点清单，并通过 `hy-smi` 查询 DCU 节点占用、频率、驱动版本和加速卡型号。
-- 支持按 `references/container/create_docker_container.md` 创建 DCU 推理测试容器，包含 DCU 设备、hyhal、模型目录和工作目录挂载规范。
-- 支持统一模型挂载和启动路径：由用户提供宿主机模型目录，创建容器时只读挂载到 `/model/<模型名>`，vLLM/SGLang 启动参数统一使用该容器内路径。
-- 容器创建固定使用 `docker run -itd`，容器名格式为 `<加速卡型号>-<YYYYMMDD>-<模型名>-<框架名>`。
-- 支持服务启动脚本准备：已有脚本直接使用，缺失时可由用户提供或参考现有脚本生成。
-- 支持基于 HYGON-AI `dcu-inference-cookbook/docs/model-deployment/` 的 vLLM/SGLang 最佳实践生成模型服务启动脚本；详见 `references/model_deployment_cookbook.md`。
-- 支持本地 `VLLM测试指导.md` 作为 vLLM 补充方案来源；当 GitHub cookbook 未覆盖目标模型时，读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md` 查找测试方案。
-- `references/VLLM测试指导.md` 已隐去姓名和团队署名，仅保留模型名称、量化属性、卡型和测试方案。
-- 支持通用 LLM 服务就绪监控：`watch_llm_ready.sh` 可监控 vLLM、SGLang 和 OpenAI-compatible 服务，默认探活 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
-- 服务监控采用低 token 状态文件机制：Agent 正常只读取 `/tmp/llm_status.json`，失败或超时时才读取少量日志上下文。
-- 支持 `evalscope` 与 `opencompass` 两种精度评测工具选择；evalscope 可使用 `eval_accuracy.sh`，两者安装方式见 `references/evaluation_framework/install_evaluation_framework.md`。
-- 精度测试启动前必须检查容器内评测工具环境；缺少 `evalscope`、`opencompass` 或 `openai` 等依赖时先安装再测试。
-- 默认数据集宿主机路径为 `/public/home/wanghy18/opencompass/data`，容器内挂载为 `/mnt/opencompass/data`；缺失时向用户索要路径。
-- evalscope 支持 gsm8k、humaneval、math_500 本地数据集特殊参数，避免 `BuilderConfig 'main' not found` 和 math_500 `answer` 字段错误。
-- 多模型多数据集测试按模型独立推进数据集队列：某个模型完成当前数据集后可立即进入下一个数据集，不等待其他模型完成。
-- 精度监控使用评测日志和 prediction 早期检查；若连续 3 条 prediction 疑似乱码，中断当前任务、释放加速卡资源并保留容器。
-- 提供精度测试报告模板，覆盖测试时间、节点、镜像、容器、模型、数据集、测试条数、精度结果和备注。
-
-## 当前版本边界
-
-- 性能测试流程仍处于占位阶段，尚未提供标准压测脚本和吞吐/延迟指标汇总。
-- 高自定义模式已有入口描述，但执行步骤还未像完整流程一样细化。
-- 模型服务启动脚本不再依赖本地 Qwen 示例脚本；优先参考 HYGON-AI cookbook，cookbook 未覆盖时再查本地 VLLM 测试指导或请求用户提供脚本。
-- 自动计划模式暂只支持单机模型：一个模型任务只绑定一个节点，不考虑跨节点模型。
-- evalscope/opencompass 已有安装、选择和常见本地数据集规则；复杂数据集转换、离线依赖处理和 OpenCompass 具体配置模板仍需继续补齐。
-- 开发日志记录在 `DEVELOPMENT_LOG.md`，仅在维护 skill 时阅读，普通推理/测试任务不需要加载。
+当前版本：**v0.5.7-alpha**。版本特性和边界已移入 `references/current_version.md`，仅在用户询问版本能力或维护 skill 时读取。
 
 作为高级 AI 测试工程师的辅助助手，本 skill 支持三种工作模式，在开始时请先向用户确认选择哪种模式。
 
@@ -111,7 +80,7 @@ version: "0.5.6-alpha"
   docker exec <container_name> bash -lc "pip list | grep -E 'evalscope|opencompass|openai'"
   ```
 - 若选择 `evalscope`，但 `pip list | grep evalscope` 无结果，必须先安装 `evalscope`，再进入测试。
-- 若选择 `opencompass`，但 `pip list | grep -E 'opencompass|openai'` 缺少必要依赖，必须先安装 OpenCompass 和 OpenAI-compatible 依赖。
+- 若选择 `opencompass`，但 `pip list | grep -E 'opencompass|openai'` 缺少必要依赖，必须先安装 OpenCompass 和 API 评测依赖。
 - 准备测试数据集：默认宿主机路径 `/public/home/wanghy18/opencompass/data`，容器内路径 `/mnt/opencompass/data`；若默认路径不存在，向用户索要路径。
 2. 性能测试环境配置：
 - 
@@ -248,7 +217,7 @@ ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
 
 ---
 
-**高效监控原则（必须遵守，适用于 vLLM / SGLang / OpenAI-compatible 服务）：**
+**高效监控原则（必须遵守，适用于 vLLM / SGLang 服务）：**
 
 - 不要在 Agent 会话中反复读取完整日志，也不要固定 `tail -n 50` 轮询日志正文。
 - 在目标节点宿主机启动后台 watcher，由 watcher 持续检查服务状态并写入小型 JSON 状态文件。
@@ -372,7 +341,7 @@ watcher 默认等待 **30 分钟**。若 `/tmp/llm_status.json` 中 `status` 为
 | 评测工具 | `evalscope` 或 `opencompass` | `evalscope` |
 | 数据集 | 评测工具支持的数据集名或 OpenCompass 配置中的数据集 | `gsm8k` |
 | limit | 测试条数，`0` 表示全量 | `10`（调试），正式测试去掉此参数 |
-| API 端口 | 推理服务 OpenAI-compatible 端口 | 计划表或启动脚本端口 |
+| API 端口 | 推理服务端口 | 计划表或启动脚本端口 |
 | 数据集宿主机路径 | 目标节点上的数据集根目录 | `/public/home/wanghy18/opencompass/data` |
 | OpenCompass 配置 | 使用 opencompass 时需要的 config 或参数 | 用户提供或现场确认 |
 
@@ -533,67 +502,4 @@ ssh -tt <Node_IP> "docker exec <container_name> cat /tmp/eval_accuracy.log"
 
 ## 第四步：精度报告生成
 
-### 4.1 收集报告所需信息
-
-从前序步骤中汇总以下信息：
-
-| 字段 | 来源 |
-|------|------|
-| 测试时间 | 日志首行时间戳 ~ 末行时间戳 |
-| 节点 | 第一步确认的 Node_IP |
-| 所用镜像 | 第二步创建容器时的镜像 ID/名称 |
-| 容器名 | 第二步创建的容器名 |
-| 模型名称 | 用户指定的模型名 |
-| 模型路径 | `/model/<模型名>` |
-| 数据集 | 用户指定的数据集（如 gsm8k） |
-| 测试条数 | limit 参数值，`全量` 表示无限制 |
-| 精度结果 | 从日志中提取的 accuracy 数值 |
-| 备注 | 任何异常、跳过、警告信息 |
-
-### 4.2 输出精度测试报告
-
-```
-╔══════════════════════════════════════════════════════╗
-║              DCU 模型精度测试报告                     ║
-╚══════════════════════════════════════════════════════╝
-
-📅 测试时间
-   开始：<开始时间>
-   结束：<结束时间>
-   耗时：<X 小时 Y 分钟>
-
-🖥️  测试环境
-   节点 IP   : <Node_IP>
-   容器名称  : <container_name>
-   镜像      : <image_id / image_name>
-
-🤖 模型信息
-   模型名称  : <模型名>
-   模型路径  : /model/<模型名>
-   推理服务  : http://127.0.0.1:8000/v1
-
-📊 测试配置
-   数据集    : <数据集名称>
-   测试条数  : <limit 或"全量">
-   批处理大小: 32
-   最大 token: 16384
-   温度      : 0.0
-
-✅ 精度结果
-   <数据集名称> accuracy : <数值>%
-   （如有多个数据集，逐行列出）
-
-📝 备注
-   <无异常 / 或列出警告信息>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-报告输出后，询问用户：
-
-```
-报告已生成。是否需要：
-1. 保存报告到文件（/tmp/accuracy_report_<模型名>_<日期>.txt）
-2. 清理测试容器和临时文件
-3. 继续进行性能测试
-```
+若用户需要正式报告或报告格式，读取 `references/accuracy_report_template.md`。普通进度查询或单项结果反馈时，只需按 `<模型, 数据集>` 粒度汇总关键结果。

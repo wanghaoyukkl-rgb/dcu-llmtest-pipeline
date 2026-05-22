@@ -7,7 +7,7 @@
 #   MODEL_NAME  - 模型目录名（位于 /model/ 下）
 #   DATASET     - 数据集名称，默认 gsm8k
 #   LIMIT       - 测试条数，默认 10
-#   API_PORT    - OpenAI-compatible 服务端口，默认 8000
+#   API_PORT    - 推理服务端口，默认 8000
 
 MODEL_NAME=${1:-"Qwen3-8B"}
 DATASET=${2:-"gsm8k"}

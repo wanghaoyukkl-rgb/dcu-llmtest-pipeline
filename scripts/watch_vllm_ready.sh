@@ -1,7 +1,7 @@
 #!/bin/bash
 # Backward-compatible vLLM entrypoint.
-# The implementation is intentionally generic enough for vLLM, SGLang, and
-# OpenAI-compatible backends. New flows should prefer watch_llm_ready.sh.
+# The implementation is intentionally generic enough for vLLM and SGLang.
+# New flows should prefer watch_llm_ready.sh.
 #
 # Usage:
 #   bash watch_vllm_ready.sh <container_name> [log_file] [status_file] [port]

@@ -2,7 +2,7 @@
 
 精度测试前，先让用户选择评测工具：
 
-1. `evalscope`：默认推荐，适合 OpenAI-compatible API 快速评测。
+1. `evalscope`：默认推荐，适合 vLLM/SGLang API 快速评测。
 2. `opencompass`：适合需要 OpenCompass 数据集、配置和报告体系的正式评测。
 
 如果用户没有指定，默认使用 `evalscope`。如果用户要求和既有 OpenCompass 数据集/配置保持一致，则选择 `opencompass`。
@@ -65,7 +65,7 @@ pip install -e .
 pip install -r requirements.txt
 ```
 
-若需要 API 模型评测，额外确认 OpenAI-compatible 依赖是否可用：
+若需要 API 模型评测，额外确认 `openai` Python 包是否可用：
 
 ```bash
 pip install openai
@@ -80,7 +80,7 @@ python -m opencompass --help
 
 ## 工具选择规则
 
-- 用户说“快速精度测试”“先跑少量样本”“OpenAI API 方式”时，优先 `evalscope`。
+- 用户说“快速精度测试”“先跑少量样本”“服务 API 方式”时，优先 `evalscope`。
 - 用户说“OpenCompass”“正式报告”“复用 opencompass 数据集/配置”时，选择 `opencompass`。
 - 如果两者都未安装，先询问用户选择哪个工具，再安装对应工具。
 - 如果用户不确定，建议先用 `evalscope` 跑小样本，再根据需要切换到 `opencompass` 做正式评测。

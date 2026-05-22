@@ -1,5 +1,15 @@
 # dcu-llmtest-pipeline 开发日志
 
+## v0.5.7-alpha - 2026-05-23
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.5.7-alpha`。
+- 将当前版本特性和当前版本边界移入 `references/current_version.md`，主 skill 仅保留按需读取入口。
+- 将精度报告字段和输出模板移入 `references/accuracy_report_template.md`。
+- 主流程移除第三方 API 泛化表述，当前仅声明支持 vLLM 和 SGLang 服务。
+- 精简 `SKILL.md`，降低默认加载负担。
+
 ## v0.5.6-alpha - 2026-05-23
 
 ### 主要变化
@@ -138,12 +148,12 @@
 - DCU 容器创建：按 `references/container/create_docker_container.md` 使用 DCU 设备、hyhal、模型目录和工作目录挂载创建推理测试容器。
 - 服务脚本准备：支持复用已有 `serve_<模型名>.sh` 脚本；缺失时可由用户提供或参考现有脚本生成。
 - 内置启动脚本：`serve_Qwen3-8B.sh`、`serve_Qwen3-30B-A3B.sh`。
-- 通用服务监控：新增 `scripts/watch_llm_ready.sh`，支持 vLLM、SGLang 和 OpenAI-compatible 服务。
+- 通用服务监控：新增 `scripts/watch_llm_ready.sh`，支持 vLLM 和 SGLang 服务。
 - 兼容旧入口：保留并增强 `scripts/watch_vllm_ready.sh`，旧流程可继续调用。
 - 低 token 监控：服务状态写入 `/tmp/llm_status.json`，Agent 正常只读取 JSON，不反复读取完整日志。
 - 多端点探活：默认尝试 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
 - 增量日志扫描：watcher 只扫描新增日志，发现 `Traceback`、`OOM`、`HIP error`、`CUDA error`、`Killed` 等错误后写入 `error` 状态。
-- 精度测试：`scripts/eval_accuracy.sh` 使用 evalscope 通过 OpenAI-compatible API 执行数据集评测。
+- 精度测试：`scripts/eval_accuracy.sh` 使用 evalscope 通过 vLLM/SGLang API 执行数据集评测。
 - 精度长任务监控：`scripts/watch_accuracy.sh` 写入 `/tmp/eval_status.json`，支持会话断开后恢复查询进度。
 - 报告模板：`SKILL.md` 中提供精度测试报告格式。
 

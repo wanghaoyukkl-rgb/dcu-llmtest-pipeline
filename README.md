@@ -2,7 +2,7 @@
 
 DCU 模型推理全流程自动化 Skill，用于协助完成大模型推理测试中的资源查询、容器创建、服务启动、就绪监控、精度评测和结果汇总。
 
-当前版本：`v0.5.6-alpha`
+当前版本：`v0.5.7-alpha`
 
 ## 适用场景
 
@@ -114,6 +114,8 @@ pip list | grep -E 'evalscope|opencompass|openai'
 │   └── watch_vllm_ready.sh
 └── references/
     ├── auto_test_plan.md
+    ├── accuracy_report_template.md
+    ├── current_version.md
     ├── model_deployment_cookbook.md
     ├── vllm_test_guidance.md
     ├── VLLM测试指导.md
@@ -125,13 +127,15 @@ pip list | grep -E 'evalscope|opencompass|openai'
 
 ## 关键文件
 
-- `SKILL.md`：Skill 主流程、触发场景、版本特性和执行规则。
+- `SKILL.md`：Skill 主流程、触发场景和执行规则。
+- `references/current_version.md`：当前版本特性和版本边界。
+- `references/accuracy_report_template.md`：精度报告字段和输出模板。
 - `references/model_deployment_cookbook.md`：HYGON-AI cookbook 的 vLLM/SGLang 最佳实践索引和适配规则。
 - `references/container/create_docker_container.md`：DCU 推理测试容器创建规范。
 - `references/auto_test_plan.md`：多模型并行/串行计划表生成规则。
 - `references/evaluation_framework/install_evaluation_framework.md`：`evalscope` 与 `opencompass` 安装方式。
 - `scripts/watch_llm_ready.sh`：通用 LLM 服务就绪监控脚本。
-- `scripts/eval_accuracy.sh`：基于 OpenAI-compatible API 的 evalscope 精度测试脚本。
+- `scripts/eval_accuracy.sh`：基于 vLLM/SGLang API 的 evalscope 精度测试脚本。
 
 ## 使用方式
 
@@ -149,12 +153,9 @@ pip list | grep -E 'evalscope|opencompass|openai'
 
 对于模型服务启动，Skill 会优先参考 HYGON-AI `dcu-inference-cookbook/docs/model-deployment/` 中对应框架和模型族的最佳实践。若 cookbook 未覆盖目标模型，vLLM 可继续参考本仓库的脱敏版 `VLLM测试指导.md`；SGLang 未覆盖时会请求用户提供适配脚本。
 
-## 当前边界
+## 版本信息
 
-- 当前自动计划只考虑单机模型，不处理一个模型跨多个节点的场景。
-- 性能测试流程仍在建设中，标准压测脚本和吞吐/延迟汇总规则尚未完整内置。
-- OpenCompass 已提供安装方式和选择规则，但复杂 OpenCompass 配置模板仍需继续补齐。
-- 节点清单、镜像选择、模型宿主路径等环境信息仍需要结合实际集群由用户确认。
+当前版本特性和边界见 [references/current_version.md](references/current_version.md)。
 
 ## 版本日志
 

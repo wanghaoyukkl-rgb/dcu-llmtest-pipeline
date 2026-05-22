@@ -1,6 +1,6 @@
 #!/bin/bash
 # Generic LLM service readiness watcher.
-# Supports vLLM, SGLang, and most OpenAI-compatible serving backends.
+# Supports vLLM and SGLang serving backends.
 # Runs on the target node host, checks lightweight HTTP endpoints, scans only
 # newly appended log content, and writes a compact JSON status file.
 #
@@ -10,7 +10,6 @@
 # Examples:
 #   bash watch_llm_ready.sh dcu-qwen /tmp/vllm_serve.log /tmp/llm_status.json 8000 vllm
 #   bash watch_llm_ready.sh dcu-qwen /tmp/sglang_serve.log /tmp/llm_status.json 30000 sglang
-#   bash watch_llm_ready.sh dcu-qwen /tmp/server.log /tmp/llm_status.json 8000 openai-compatible "/health,/v1/models"
 
 set -u
 
