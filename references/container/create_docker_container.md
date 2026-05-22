@@ -14,8 +14,17 @@ NOTE: 在 DCU 和 NVIDIA 平台创建容器需使用不同命令。本 skill 当
 - `MODEL_NAME`：当前测试模型名，用于容器路径 `/model/<MODEL_NAME>`。
 - `FRAMEWORK`：`vllm` 或 `sglang`。
 - `HOST_MODEL_PATH`：用户提供的目标节点宿主机模型目录。
+- `HOST_DATASET_PATH`：精度测试所需数据集根目录，默认 `/public/home/wanghy18/opencompass/data`。
 
 若用户未提供 `HOST_MODEL_PATH`，不要猜测模型目录，先询问用户提供具体路径。
+
+若任务包含精度测试，先在目标节点检查默认数据集目录：
+
+```bash
+ssh -tt <Node_IP> "test -d /public/home/wanghy18/opencompass/data && echo FOUND || echo MISSING"
+```
+
+若默认目录不存在，向用户索要数据集根目录；不要自动下载或创建大数据集。
 
 ## 2. 镜像检索规范
 
@@ -51,9 +60,17 @@ date +"%Y%m%d"
 -v <HOST_MODEL_PATH>:/model/<MODEL_NAME>:ro
 ```
 
+精度测试数据集挂载规则：
+
+```text
+-v <HOST_DATASET_PATH>:/mnt/opencompass/data:ro
+```
+
 注意：
 
 - `:ro` 必须保留，模型目录以只读方式挂载。
+- 精度数据集目录也必须以只读方式挂载。
+- 若本次任务不包含精度测试，可省略数据集挂载项。
 - vLLM 和 SGLang 启动命令中的模型路径都统一使用 `/model/<MODEL_NAME>`。
 - 不要把用户提供的宿主机路径直接写入服务启动命令。
 
@@ -76,6 +93,7 @@ ssh -tt <Node_IP> "docker run -itd --name <container-name> \
   -v /opt/hyhal:/opt/hyhal:ro \
   -v <workdir_on_node>:/mnt \
   -v <HOST_MODEL_PATH>:/model/<MODEL_NAME>:ro \
+  -v <HOST_DATASET_PATH>:/mnt/opencompass/data:ro \
   <Container_image_ID> \
   bash"
 ```
@@ -87,6 +105,8 @@ ssh -tt <Node_IP> "docker run -itd --name <container-name> \
 - 镜像 ID/名称
 - 宿主机模型目录
 - 容器内模型路径：`/model/<MODEL_NAME>`
+- 宿主机数据集目录：精度测试时必填，默认 `/public/home/wanghy18/opencompass/data`
+- 容器内数据集路径：`/mnt/opencompass/data`
 - 框架：`vllm` 或 `sglang`
 - 加速卡型号
 

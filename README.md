@@ -2,7 +2,7 @@
 
 DCU 模型推理全流程自动化 Skill，用于协助完成大模型推理测试中的资源查询、容器创建、服务启动、就绪监控、精度评测和结果汇总。
 
-当前版本：`v0.5.5-alpha`
+当前版本：`v0.5.6-alpha`
 
 ## 适用场景
 
@@ -11,6 +11,7 @@ DCU 模型推理全流程自动化 Skill，用于协助完成大模型推理测�
 - 对多个模型生成并行/串行测试计划表，并在用户确认后按波次执行。
 - 监控模型服务启动状态，避免反复读取完整日志造成上下文浪费。
 - 使用 `evalscope` 或 `opencompass` 执行精度测试并整理报告。
+- 对 gsm8k、humaneval、math_500 等本地数据集使用专门配置，减少常见 BuilderConfig 和字段错误。
 
 ## 工作模式
 
@@ -71,6 +72,34 @@ BW1100-20260522-Qwen3-32B-vllm
 /get_server_info
 ```
 
+### 精度测试数据集
+
+默认宿主机数据集路径为：
+
+```text
+/public/home/wanghy18/opencompass/data
+```
+
+容器内挂载路径为：
+
+```text
+/mnt/opencompass/data
+```
+
+精度测试前会先检查容器内评测工具环境，例如：
+
+```bash
+pip list | grep -E 'evalscope|opencompass|openai'
+```
+
+当前对以下本地数据集有特殊规则：
+
+- `gsm8k`：使用 `subset_list: ["default"]`，避免 `BuilderConfig 'main' not found`。
+- `humaneval`：本地评测规范化为 `humaneval`，避免 `openai_humaneval` subset 不匹配。
+- `math_500`：本地目录按 `math/test.jsonl` 处理，并检查 `answer` 字段。
+
+多模型多数据集测试时，每个模型独立推进自己的数据集队列；某个模型完成当前数据集后可直接进入下一个数据集，不等待其他模型。
+
 ## 目录结构
 
 ```text
@@ -124,7 +153,7 @@ BW1100-20260522-Qwen3-32B-vllm
 
 - 当前自动计划只考虑单机模型，不处理一个模型跨多个节点的场景。
 - 性能测试流程仍在建设中，标准压测脚本和吞吐/延迟汇总规则尚未完整内置。
-- OpenCompass 已提供安装方式和选择规则，但具体数据集配置模板仍需继续补齐。
+- OpenCompass 已提供安装方式和选择规则，但复杂 OpenCompass 配置模板仍需继续补齐。
 - 节点清单、镜像选择、模型宿主路径等环境信息仍需要结合实际集群由用户确认。
 
 ## 版本日志

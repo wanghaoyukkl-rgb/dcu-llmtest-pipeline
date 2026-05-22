@@ -1,12 +1,12 @@
 ---
 name: dcu-llmtest-pipeline
 description: DCU模型推理全流程自动化工具。目前支持模式：1)通用完整流程模式(查找可用资源→生成脚本→推理→数据整理)；2)高自定义模式（查找可用资源→配置环境→根据提供的脚本和参数来进行推理和汇报）；3)多模型自动计划模式（查找节点资源→收集模型/卡型/测试类型→查询启动资源需求→生成并确认并行/串行计划表→按波次执行）。当用户提到"模型推理"、"性能测试"、"精度测试"、"批量测试"、"多个模型"、"计划表"时使用此skill。
-version: "0.5.5-alpha"
+version: "0.5.6-alpha"
 ---
 
 # DCU 推理全流程 Skill
 
-当前版本：**v0.5.5-alpha**
+当前版本：**v0.5.6-alpha**
 
 ## 当前版本特性
 
@@ -23,6 +23,11 @@ version: "0.5.5-alpha"
 - 支持通用 LLM 服务就绪监控：`watch_llm_ready.sh` 可监控 vLLM、SGLang 和 OpenAI-compatible 服务，默认探活 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
 - 服务监控采用低 token 状态文件机制：Agent 正常只读取 `/tmp/llm_status.json`，失败或超时时才读取少量日志上下文。
 - 支持 `evalscope` 与 `opencompass` 两种精度评测工具选择；evalscope 可使用 `eval_accuracy.sh`，两者安装方式见 `references/evaluation_framework/install_evaluation_framework.md`。
+- 精度测试启动前必须检查容器内评测工具环境；缺少 `evalscope`、`opencompass` 或 `openai` 等依赖时先安装再测试。
+- 默认数据集宿主机路径为 `/public/home/wanghy18/opencompass/data`，容器内挂载为 `/mnt/opencompass/data`；缺失时向用户索要路径。
+- evalscope 支持 gsm8k、humaneval、math_500 本地数据集特殊参数，避免 `BuilderConfig 'main' not found` 和 math_500 `answer` 字段错误。
+- 多模型多数据集测试按模型独立推进数据集队列：某个模型完成当前数据集后可立即进入下一个数据集，不等待其他模型完成。
+- 精度监控使用评测日志和 prediction 早期检查；若连续 3 条 prediction 疑似乱码，中断当前任务、释放加速卡资源并保留容器。
 - 提供精度测试报告模板，覆盖测试时间、节点、镜像、容器、模型、数据集、测试条数、精度结果和备注。
 
 ## 当前版本边界
@@ -31,7 +36,7 @@ version: "0.5.5-alpha"
 - 高自定义模式已有入口描述，但执行步骤还未像完整流程一样细化。
 - 模型服务启动脚本不再依赖本地 Qwen 示例脚本；优先参考 HYGON-AI cookbook，cookbook 未覆盖时再查本地 VLLM 测试指导或请求用户提供脚本。
 - 自动计划模式暂只支持单机模型：一个模型任务只绑定一个节点，不考虑跨节点模型。
-- evalscope/opencompass 已有安装和选择规则；数据集准备、离线依赖处理和 OpenCompass 具体配置模板仍需继续补齐。
+- evalscope/opencompass 已有安装、选择和常见本地数据集规则；复杂数据集转换、离线依赖处理和 OpenCompass 具体配置模板仍需继续补齐。
 - 开发日志记录在 `DEVELOPMENT_LOG.md`，仅在维护 skill 时阅读，普通推理/测试任务不需要加载。
 
 作为高级 AI 测试工程师的辅助助手，本 skill 支持三种工作模式，在开始时请先向用户确认选择哪种模式。
@@ -64,13 +69,13 @@ version: "0.5.5-alpha"
 自动计划模式必须遵守：
 
 - 第一步仍然是查询可用节点资源，输出节点资源表。
-- 第二步从用户获取需要测试的模型列表、测试类型、目标加速卡型号、推理框架、部署模式和每个模型在目标节点上的宿主机路径；部署模式默认 `IFB`，只有用户要求时才使用 `PD` 分离模式。
+- 第二步从用户获取需要测试的模型列表、测试类型、精度数据集队列、目标加速卡型号、推理框架、部署模式、每个模型在目标节点上的宿主机路径和数据集宿主机路径；部署模式默认 `IFB`，只有用户要求时才使用 `PD` 分离模式。
 - 第三步按 `references/model_deployment_cookbook.md` 查询每个模型启动服务脚本所需的加速卡型号和卡数。
 - 第四步编排计划表：同一节点可并行多个模型，但并行任务卡数之和不能超过节点空闲卡数；一个节点默认 8 张卡；暂不考虑一个模型跨多个节点。
 - 第五步为每个任务分配唯一端口，端口在计划表中不能重复；执行时若发现端口占用，必须重新分配并同步更新计划表和启动脚本。
 - 第六步将计划表推送给用户确认或修改。用户确认前不得创建容器、启动服务或执行测试。
 
-计划表至少包含：任务ID、波次、模型、框架、测试类型、目标卡型、节点、卡数、卡ID、部署模式、端口、宿主模型路径、容器模型路径、容器名、cookbook条目、状态、备注。
+计划表至少包含：任务ID、波次、模型、框架、测试类型、数据集队列、目标卡型、节点、卡数、卡ID、部署模式、端口、宿主模型路径、容器模型路径、容器名、cookbook条目、状态、备注。
 
 若 cookbook 要求的卡型/卡数与当前资源不对齐，标记为 blocked，并询问用户是否能够提供适配脚本或修改目标卡型/节点。
 
@@ -86,12 +91,14 @@ version: "0.5.5-alpha"
 - 推理框架：`vllm` 或 `sglang`。
 - 当前测试加速卡型号：例如 `BW1100`、`BW1000`、`K100AI`。
 - 用户提供的目标节点宿主机模型目录：例如 `/public/opendas/DL_DATA/llm-models/Qwen3-32B`。若用户未提供，不要猜测路径，先询问用户。
+- 若包含精度测试，确认数据集宿主机目录。默认使用 `/public/home/wanghy18/opencompass/data`；若目标节点不存在该目录，先向用户索要数据集路径。
 
 容器创建规则：
 
 - 容器名固定为 `<加速卡型号>-<YYYYMMDD>-<模型名>-<框架名>`，必要时将模型名中的 `/` 和空格替换为 `-`。
 - 必须使用 `docker run -itd` 创建后台容器，不使用 `docker run -it`。
 - 模型目录必须按 `-v <宿主机模型目录>:/model/<模型名>:ro` 只读挂载。
+- 若包含精度测试，数据集目录必须按 `-v <数据集宿主机目录>:/mnt/opencompass/data:ro` 只读挂载。
 - 后续 vLLM/SGLang 启动命令中的模型路径参数一律使用 `/model/<模型名>`，不得继续使用宿主机路径或文档中的旧路径。
 
 ### 2.2 环境配置
@@ -99,8 +106,13 @@ version: "0.5.5-alpha"
 1. 精度测试环境配置：
 - 读取 `references/evaluation_framework/install_evaluation_framework.md`
 - 让用户选择评测工具：`evalscope`（默认）或 `opencompass`
-- 按用户选择安装必要测试工具
-- 准备测试数据集
+- 容器创建后先检查容器内评测环境：
+  ```bash
+  docker exec <container_name> bash -lc "pip list | grep -E 'evalscope|opencompass|openai'"
+  ```
+- 若选择 `evalscope`，但 `pip list | grep evalscope` 无结果，必须先安装 `evalscope`，再进入测试。
+- 若选择 `opencompass`，但 `pip list | grep -E 'opencompass|openai'` 缺少必要依赖，必须先安装 OpenCompass 和 OpenAI-compatible 依赖。
+- 准备测试数据集：默认宿主机路径 `/public/home/wanghy18/opencompass/data`，容器内路径 `/mnt/opencompass/data`；若默认路径不存在，向用户索要路径。
 2. 性能测试环境配置：
 - 
 
@@ -360,7 +372,44 @@ watcher 默认等待 **30 分钟**。若 `/tmp/llm_status.json` 中 `status` 为
 | 评测工具 | `evalscope` 或 `opencompass` | `evalscope` |
 | 数据集 | 评测工具支持的数据集名或 OpenCompass 配置中的数据集 | `gsm8k` |
 | limit | 测试条数，`0` 表示全量 | `10`（调试），正式测试去掉此参数 |
+| API 端口 | 推理服务 OpenAI-compatible 端口 | 计划表或启动脚本端口 |
+| 数据集宿主机路径 | 目标节点上的数据集根目录 | `/public/home/wanghy18/opencompass/data` |
 | OpenCompass 配置 | 使用 opencompass 时需要的 config 或参数 | 用户提供或现场确认 |
+
+---
+
+**Step A.1：确认本地数据集规则**
+
+默认数据集路径：
+
+- 宿主机：`/public/home/wanghy18/opencompass/data`
+- 容器内：`/mnt/opencompass/data`
+
+若目标节点上不存在默认宿主机路径，先向用户索要路径，并在创建容器时挂载为 `/mnt/opencompass/data:ro`。
+
+evalscope 本地数据集必须使用以下特殊规则：
+
+- `gsm8k`：避免 `BuilderConfig 'main' not found. Available: ['default']`，使用：
+  ```json
+  {"gsm8k": {"local_path": "/mnt/opencompass/data/gsm8k", "subset_list": ["default"]}}
+  ```
+- `humaneval`：不要使用 `openai_humaneval` 作为本地 subset；使用：
+  ```json
+  {"humaneval": {"local_path": "/mnt/opencompass/data/humaneval", "subset_list": ["default"]}}
+  ```
+- `math_500`：本地目录名按实测为 `math`，默认文件为 `/mnt/opencompass/data/math/test.jsonl`。不要通过直接截取 JSONL 前 N 行来构造小样本；使用 `limit` 控制样本数。若出现 `KeyError: 'answer'`，先检查 `test.jsonl` 是否保留 `answer` 字段，再决定是否需要用户提供修正后的数据文件。
+
+**Step A.2：多模型多数据集调度原则**
+
+当同时测试多个模型和多个数据集时，不要把“同一个数据集所有模型全部完成”作为进入下一个数据集的全局屏障。
+
+正确行为：
+
+- 每个模型维护自己的数据集队列，例如 `gsm8k -> math_500 -> humaneval`。
+- 某个模型完成当前数据集后，只要该模型服务仍健康、端口可用、容器未释放，就立即进入该模型的下一个数据集。
+- 其他模型仍在当前数据集末尾时，不阻塞已完成模型继续测试。
+- 某个模型完成全部数据集后，再根据计划释放加速卡资源或保留服务等待用户确认。
+- 报告按 `<模型, 数据集>` 粒度增量记录，最终再汇总总表。
 
 ---
 
@@ -392,6 +441,7 @@ scp scripts/watch_accuracy.sh <Node_IP>:/tmp/watch_accuracy.sh
 ```bash
 ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
   'bash /tmp/eval_accuracy.sh <模型名> <数据集> <limit> \
+   <端口> \
    > /tmp/eval_accuracy.log 2>&1'"
 ```
 
@@ -410,12 +460,17 @@ ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
 
 **Step D：在宿主机上启动后台监控进程**
 
-监控脚本运行在**宿主机**（不是容器内），通过 `nohup` 挂后台，每 5 分钟读一次容器日志、写一次状态文件。这样即使 Claude 会话断开，监控仍在持续运行。
+监控脚本运行在**宿主机**（不是容器内），通过 `nohup` 挂后台，读取评测日志并写状态文件。不要固定时间读取模型服务日志；evalscope/opencompass 的测试进度优先从 `/tmp/eval_accuracy.log` 和 prediction 文件判断。
+
+若 evalscope 已生成 prediction 文件或输出目录，将其路径作为第三个参数传入；若暂不确定，传 `auto`，watcher 会在容器内搜索近期 prediction/jsonl/json 文件并在首次出现 3 条样本后做一次乱码检测。
 
 ```bash
 ssh -tt <Node_IP> "nohup bash /tmp/watch_accuracy.sh \
   /tmp/eval_accuracy.log \
   /tmp/eval_status.json \
+  auto \
+  <container_name> \
+  120 \
   > /tmp/watch_accuracy.monitor.log 2>&1 & echo 监控进程PID: $!"
 ```
 
@@ -456,6 +511,7 @@ ssh -tt <Node_IP> "docker exec <container_name> tail -n 30 /tmp/eval_accuracy.lo
 | `running` | 仍在测试 | 展示 `progress` 字段内容，告知用户继续等待 |
 | `done` | 测试完成 | 进入 3.4 收集完整结果 |
 | `error` | 出现错误 | 展示 `result` 字段的报错内容，询问用户是否重试 |
+| `aborted` | prediction 连续 3 条疑似乱码 | 当前评测/服务已被中断以释放加速卡资源，容器保留；展示 `result` 并反馈用户 |
 
 ---
 

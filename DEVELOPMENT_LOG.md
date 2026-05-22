@@ -1,5 +1,16 @@
 # dcu-llmtest-pipeline 开发日志
 
+## v0.5.6-alpha - 2026-05-23
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.5.6-alpha`。
+- 精度测试流程增加容器内评测环境检查：使用 `pip list | grep` 验证 `evalscope`、`opencompass`、`openai` 等依赖，缺失时先安装再测试。
+- 默认数据集宿主机路径设为 `/public/home/wanghy18/opencompass/data`，容器内挂载到 `/mnt/opencompass/data:ro`，默认路径不存在时向用户索要路径。
+- `eval_accuracy.sh` 增加 gsm8k、humaneval、math_500 的本地数据集特殊参数，修复 `BuilderConfig ... Available: ['default']` 和 math_500 `answer` 字段问题的前置检查。
+- `watch_accuracy.sh` 改为优先读取评测日志和 prediction 文件；支持容器内日志读取、prediction 自动查找、连续 3 条疑似乱码时中断当前任务并保留容器。
+- 多模型多数据集计划改为按模型独立推进数据集队列，避免等待所有模型完成同一数据集后才进入下一个数据集。
+
 ## v0.5.5-alpha - 2026-05-22
 
 ### 主要变化
