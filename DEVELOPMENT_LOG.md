@@ -1,5 +1,66 @@
 # dcu-llmtest-pipeline 开发日志
 
+## v0.6.0-alpha - 2026-05-25
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.6.0-alpha`。
+- `references/current_version.md` 同步更新当前版本号。
+- 新增 `README.md`，面向 GitHub 仓库说明 skill 能力、目录结构、安装方式、典型流程、长队列执行和 OpenCompass 续跑入口。
+- 清理旧 Qwen 示例启动脚本 `scripts/serve_Qwen3-8B.sh`、`scripts/serve_Qwen3-30B-A3B.sh`。
+- 清理旧版 HTML 思维导图 `references/skill_mindmap_v0.5.9.html`，后续以 README 和拆分后的 workflow 引用作为主要导航。
+- 作为 `v0.6.0-alpha` 发布版推送到 GitHub `main` 分支。
+
+## v0.5.11-alpha - 2026-05-25
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.5.11-alpha`。
+- 按 progressive disclosure 原则瘦身主 skill：主文件只保留模式选择、引用导航、通用执行骨架和核心约束。
+- 新增 `references/service_workflow.md`，承接原主文件中的服务脚本准备、cookbook-first 规则、启动命令和 `watch_llm_ready.sh` 监控细节。
+- 新增 `references/accuracy_workflow.md`，承接原主文件中的精度测试参数、evalscope/OpenCompass 执行、续跑、watcher、orchestrator、结果提取和报告生成细节。
+- 删除已过时且拼写错误的 `references/evaluation_framework/intall_evaluation_framework.md`，避免和正式文件 `install_evaluation_framework.md` 重复。
+- 修改前已备份当前 skill 到 `/public/home/wanghy18/skill_backups/dcu-llmtest-pipeline.backup.20260525-v0.5.11-slim` 和 `/public/home/wanghy18/skill_backups/dcu-llmtest-pipeline-worktree.backup.20260525-v0.5.11-slim`。
+
+## v0.5.10-alpha - 2026-05-25
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.5.10-alpha`。
+- OpenCompass 精度测试环境检查从 `pip list` 扩展为 import 级检查，覆盖 `opencompass`、`openai`、`math_verify`、`latex2sympy2_extended`、`human_eval`。
+- 明确 OpenCompass 正式评测前需要补装常用依赖：`pip install math_verify latex2sympy2_extended human-eval`，其中 `human_eval` 的 pip 包名为 `human-eval`。
+- 补充 OpenCompass 续跑/补评估流程：已有 prediction/result 但 eval 失败时使用 `-m eval -r <timestamp> -w <work_dir>`，推理中断或需要补齐 prediction 时使用 `-m infer -r <timestamp> -w <work_dir>`。
+- `references/evaluation_framework/install_evaluation_framework.md` 增加 OpenCompass 依赖验证、补装命令和续跑说明。
+- `references/auto_test_plan.md` 增加长队列中 OpenCompass 依赖失败后的可恢复命令记录要求。
+- 修改前已备份当前 skill 到 `/public/home/wanghy18/skill_backups/dcu-llmtest-pipeline.backup.20260525-v0.5.10-opencompass-resume` 和 `/public/home/wanghy18/skill_backups/dcu-llmtest-pipeline-worktree.backup.20260525-v0.5.10-opencompass-resume`。
+
+## v0.5.9-alpha - 2026-05-25
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.5.9-alpha`。
+- 将多模型、多波次、跨小时/跨天任务的执行策略从 Agent 前台轮询升级为后台 orchestrator：生成 `plan.json/state.json/events.log/reports/`，由独立进程推进排队任务。
+- 新增 `scripts/auto_test_orchestrator.py`：支持读取确认后的计划、按节点/卡资源启动 pending 任务、读取 watcher 状态、记录事件、失败释放资源并继续调度后续任务。
+- 明确任务失败处理策略：服务启动失败、评测错误、watcher `error/aborted`、超时或 prediction 乱码时，记录到 `state.json/events.log`，执行 `release_cmd` 释放评测/服务进程，容器默认保留，后续队列继续执行。
+- 调整 prediction 早期检查规则：每个模型只检查一次；默认评测启动 600 秒后读取前 3 条有文本 prediction，若 3 条均疑似乱码则按 `aborted: garbled_prediction` 处理。
+- `watch_accuracy.sh` 增加 `prediction_check_delay` 参数，并在普通错误时也尝试释放当前评测/服务进程。
+- `references/auto_test_plan.md` 增加后台 orchestrator 计划字段、落盘结构、状态流转和执行规范。
+- `references/current_version.md` 同步更新 v0.5.9-alpha 能力与边界。
+- 将 `scripts/auto_test_orchestrator.py` 顶部说明和主要用户可见输出调整为中文。
+- 新增 `references/skill_mindmap_v0.5.9.html`，用于 HTML 形式查看当前版本能力思维导图。
+
+## v0.5.8-alpha - 2026-05-25
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.5.8-alpha`。
+- 精度测试启动成功后，要求 Agent 维护本轮计划状态清单，记录模型、数据集队列、节点、容器、服务端口、状态文件、日志路径和输出目录。
+- 将精度测试收尾逻辑从“用户回来后按需查询”升级为“待机监控与自动报告”：当前会话仍可执行工具时，默认每 10 分钟读取 watcher 状态文件。
+- 明确待机期间只读取小型 JSON 状态文件；仅在状态变化、出现 `error/aborted`、或所有计划项完成时向用户发送更新。
+- 新增所有计划项完成后的自动汇总要求：收集 summary/log/result 文件，按 `<模型, 数据集>` 提取指标、样本数、耗时和输出目录，并主动推送测试报告。
+- 明确自动报告边界：后台 watcher 只能写状态文件，不能在 Agent 会话结束或运行环境回收后主动唤醒 Agent。
+- `references/current_version.md` 同步补充待机监控、自动报告能力和边界说明。
+
 ## v0.5.7-alpha - 2026-05-23
 
 ### 主要变化

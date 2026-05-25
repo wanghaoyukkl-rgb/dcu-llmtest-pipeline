@@ -14,14 +14,22 @@
 通用检查：
 
 ```bash
-docker exec <container_name> bash -lc "pip list | grep -E 'evalscope|opencompass|openai'"
+docker exec <container_name> bash -lc "python - <<'PY'
+import importlib.util
+for name in ['evalscope', 'opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'human_eval']:
+    print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
+PY"
 ```
 
 按工具检查：
 
 ```bash
 docker exec <container_name> bash -lc "pip list | grep evalscope"
-docker exec <container_name> bash -lc "pip list | grep -E 'opencompass|openai'"
+docker exec <container_name> bash -lc "python - <<'PY'
+import importlib.util
+for name in ['opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'human_eval']:
+    print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
+PY"
 ```
 
 若目标工具未安装，先按下面安装方式安装并验证；不要直接启动精度测试。
@@ -71,12 +79,48 @@ pip install -r requirements.txt
 pip install openai
 ```
 
+正式评测常用数据集依赖必须同时确认：
+
+- `math_verify`：math-500 等数学评测常用。
+- `latex2sympy2_extended`：数学表达式解析常用。
+- `human_eval`：HumanEval 评测模块，对应 pip 包名为 `human-eval`。
+
+补装命令：
+
+```bash
+pip install math_verify latex2sympy2_extended human-eval
+```
+
 安装后验证：
 
 ```bash
-pip list | grep -E 'opencompass|openai'
+python - <<'PY'
+import importlib.util
+for name in ['opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'human_eval']:
+    print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
+PY
 python -m opencompass --help
 ```
+
+## OpenCompass 续跑与补评估
+
+当 OpenCompass 推理已产生 prediction/result，但评测阶段因为依赖缺失、评测脚本错误或汇总中断失败时，修复环境后优先只重跑 eval 阶段：
+
+```bash
+opencompass <OpenCompass配置> -m eval -r <timestamp> -w <work_dir>
+```
+
+当 OpenCompass 推理阶段中断或需要补齐缺失 prediction 时，使用 infer 续跑：
+
+```bash
+opencompass <OpenCompass配置> -m infer -r <timestamp> -w <work_dir>
+```
+
+说明：
+
+- `<timestamp>` 是 OpenCompass 输出目录中的运行时间戳目录名，例如 `20260525_145907`。
+- `<work_dir>` 是时间戳目录的上一级输出目录。
+- 补评估前先确认依赖检查全部为 `OK`；否则容易出现只有部分数据集生成 summary 的情况。
 
 ## 工具选择规则
 

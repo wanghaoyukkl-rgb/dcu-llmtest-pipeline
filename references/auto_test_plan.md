@@ -10,6 +10,7 @@
 - 同一个节点可并行运行多个任务，但并行任务所需卡数之和不能超过该节点可用卡数。
 - 若任务需要 8 张卡，则独占一个节点。
 - 支持并行波次和串行波次：同一波次中的任务可并行启动，不同波次按顺序执行。
+- 多模型、多波次、或预计跨小时/跨天的计划必须使用后台 orchestrator 执行，不能依赖 Agent 会话持续在线。
 
 ## 计划生成流程
 
@@ -47,6 +48,7 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 - 部署模式：默认 `IFB`；只有用户明确要求时才使用 `PD`
 - 每个模型在目标节点上的宿主机模型目录；若用户未提供，先询问用户
 - 精度数据集宿主机根目录；默认 `/public/home/wanghy18/opencompass/data`，不存在时向用户索要路径
+- 精度评测工具；若选择 OpenCompass，确认容器内是否已具备 `opencompass`、`openai`、`math_verify`、`latex2sympy2_extended`、`human_eval`
 - 每个模型是否有指定脚本或特殊参数
 
 可选字段：
@@ -55,6 +57,7 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 - 预计测试时长
 - 性能测试参数
 - 是否允许同节点并行多个小模型
+- OpenCompass 是否需要续跑：`-m eval -r <timestamp>` 用于已有 prediction/result 后补评估，`-m infer -r <timestamp>` 用于推理中断后补齐 prediction
 
 ### Step 3：查询模型启动资源需求
 
@@ -139,7 +142,51 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 - 某个模型完成当前数据集后，立即启动该模型的下一个数据集；不要等待其他模型完成同一数据集。
 - 某个模型完成全部数据集后，才能按用户确认释放模型服务和加速卡资源；容器可按用户要求保留。
 - 报告必须按 `<模型, 数据集>` 粒度记录增量结果，最后再汇总总表。
-- 若某个模型在 prediction 早期检查中连续 3 条疑似乱码，将该模型状态标记为 `aborted: garbled_prediction`，中断该模型当前任务并释放其加速卡资源，不影响其他模型继续执行。
+- 每个模型只做一次 prediction 早期检查；默认评测启动 600 秒后读取前 3 条有文本的 prediction。若 3 条均疑似乱码，将该模型状态标记为 `aborted: garbled_prediction`，中断该模型当前任务并释放其加速卡资源，不影响其他模型继续执行。
+
+### Step 5.2：后台 orchestrator 执行规范
+
+当计划满足任一条件时，必须生成后台执行计划并启动 orchestrator：
+
+- 模型数大于 1，或存在串行/多波次排队。
+- 预计总耗时超过当前 Agent 会话可持续时间。
+- 用户明确要求“自动排队”“跑完一个继续下一个”“长时间任务无人值守”。
+
+落盘结构：
+
+```text
+<run_dir>/
+  plan.json
+  state.json
+  events.log
+  orchestrator.log
+  reports/
+  task_<ID>/
+```
+
+`plan.json` 中每个任务至少包含：
+
+- `task_id`、`wave`、`model`、`framework`、`node`、`cards`、`container`、`port`
+- `start_cmd`：启动该模型服务与评测的宿主机命令，必须可由 orchestrator 后台执行
+- `status_file`：watcher 写出的状态 JSON
+- `log_file`：主要评测日志
+- `prediction_path`：prediction 文件或目录；未知时使用 `auto`
+- `prediction_check_after_sec`：默认 600
+- `release_cmd`：释放该模型评测/服务进程的命令；默认保留容器
+- `output_dir`：summary、prediction、日志所在目录
+- 若使用 OpenCompass，额外记录 `opencompass_config`、`work_dir`、`run_timestamp`、`resume_eval_cmd`、`resume_infer_cmd`
+
+orchestrator 行为要求：
+
+1. 启动后读取 `plan.json`，初始化或恢复 `state.json`。
+2. 根据计划资源字段调度 pending 任务；同一节点同一卡 ID 不得被两个 running 任务同时占用。
+3. 任务启动、完成、失败、中断、释放资源都必须追加到 `events.log`。
+4. 任务 watcher 返回 `done` 时标记完成并记录输出目录。
+5. 任务 watcher 返回 `error`、服务启动失败、评测命令非零退出、超时、或 prediction 前 3 条均乱码时，标记 `failed` 或 `aborted`，执行 `release_cmd`，然后继续调度后续 pending 任务。
+6. 若 OpenCompass 任务因 `math_verify`、`latex2sympy2_extended`、`human_eval` 等评测依赖缺失导致 eval 阶段失败，但已有 prediction/result，事件日志必须记录可恢复命令：`opencompass <config> -m eval -r <timestamp> -w <work_dir>`。
+7. 若 OpenCompass 任务因推理阶段中断导致 prediction 缺失，事件日志必须记录可恢复命令：`opencompass <config> -m infer -r <timestamp> -w <work_dir>`。
+8. 失败任务默认不阻塞后续队列；仅当用户计划显式声明 `stop_on_failure: true` 时才停止后续任务。
+9. 所有任务进入终态后，在 `reports/` 写最终汇总草稿；Agent 被用户唤醒后读取该报告并推送聊天总结。
 
 ### Step 6：计划表输出
 
@@ -161,8 +208,10 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 - `blocked: need_script`：缺少适配脚本
 - `blocked: card_mismatch`：卡型不匹配
 - `blocked: no_resource`：当前无足够卡数
-- `aborted: garbled_prediction`：prediction 连续 3 条疑似乱码，已中断该模型任务
+- `aborted: garbled_prediction`：prediction 前 3 条均疑似乱码，已中断该模型任务
 - `pending_user_confirm`：等待用户确认或修改
+- `failed`：任务执行失败，已记录错误并尝试释放资源
+- `released`：该任务占用的服务/评测进程已释放，容器保留
 
 计划表后必须询问用户确认或修改。用户确认前不得创建容器、启动服务或执行测试。
 
@@ -178,6 +227,15 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 6. 同波次模型服务并行启动和监控；模型内部的数据集队列独立推进，不设置“所有模型完成同一数据集后再进入下一个数据集”的全局屏障。
 7. 某模型完成一个数据集后，立即启动该模型队列中的下一个数据集；某模型完成全部数据集后再释放该模型占用资源。
 8. 执行过程中若端口被占用，可重新分配未使用端口，并同步更新计划表和启动脚本。
+9. 若精度工具为 OpenCompass，启动评测前先在容器内检查并补装 `math_verify`、`latex2sympy2_extended`、`human-eval`；eval 阶段失败但已有输出时，优先用 `-m eval -r <timestamp>` 补评估，infer 阶段中断时用 `-m infer -r <timestamp>` 续跑。
+
+若计划进入后台 orchestrator 模式，Agent 在用户确认后必须：
+
+1. 生成 `<run_dir>/plan.json`，包含所有 ready 任务及其 release/prediction/check/status 字段。
+2. 上传或引用 `scripts/auto_test_orchestrator.py`。
+3. 用 `nohup python3 auto_test_orchestrator.py --plan <run_dir>/plan.json --run-dir <run_dir>` 启动后台编排器。
+4. 向用户返回 `run_dir`、`state.json`、`events.log`、`orchestrator.log` 路径。
+5. 后续用户询问状态时优先读取 `state.json` 和 `events.log`，只有失败排查时才读取少量任务日志。
 
 ## 计划表确认提示
 

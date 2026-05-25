@@ -1,162 +1,124 @@
 # dcu-llmtest-pipeline
 
-DCU 模型推理全流程自动化 Skill，用于协助完成大模型推理测试中的资源查询、容器创建、服务启动、就绪监控、精度评测和结果汇总。
+DCU LLM 推理与精度测试自动化 Codex Skill。
 
-当前版本：`v0.5.7-alpha`
+当前版本：`v0.6.0-alpha`
 
-## 适用场景
+## 能力概览
 
-- 在 DCU 节点上启动 vLLM 或 SGLang 推理服务。
-- 根据 HYGON-AI `dcu-inference-cookbook` 最佳实践生成或校验模型服务脚本。
-- 对多个模型生成并行/串行测试计划表，并在用户确认后按波次执行。
-- 监控模型服务启动状态，避免反复读取完整日志造成上下文浪费。
-- 使用 `evalscope` 或 `opencompass` 执行精度测试并整理报告。
-- 对 gsm8k、humaneval、math_500 等本地数据集使用专门配置，减少常见 BuilderConfig 和字段错误。
-
-## 工作模式
-
-Skill 当前支持三种入口：
-
-1. **通用完整流程**：查找可用资源 -> 生成脚本 -> 启动推理 -> 数据整理。
-2. **高自定义流程**：查找资源 -> 配置环境 -> 按用户提供的脚本和参数执行测试。
-3. **多模型自动计划模式**：查找节点资源 -> 收集模型/卡型/测试类型 -> 查询资源需求 -> 生成计划表 -> 用户确认后执行。
-
-## 当前核心约定
-
-### 模型路径
-
-无论使用 vLLM 还是 SGLang，服务启动命令中的模型路径统一为：
-
-```text
-/model/<模型名>
-```
-
-创建容器前需要用户提供目标节点上的宿主机模型目录。容器创建时按只读方式挂载：
-
-```text
--v <宿主机模型目录>:/model/<模型名>:ro
-```
-
-不要把宿主机模型路径直接写入 vLLM/SGLang 启动命令。
-
-### 容器创建
-
-容器创建必须使用后台模式：
-
-```bash
-docker run -itd
-```
-
-容器命名格式为：
-
-```text
-<加速卡型号>-<YYYYMMDD>-<模型名>-<框架名>
-```
-
-例如：
-
-```text
-BW1100-20260522-Qwen3-32B-vllm
-```
-
-### 服务监控
-
-服务启动后使用 `scripts/watch_llm_ready.sh` 进行轻量状态监控。Watcher 会写入小型 JSON 状态文件，Agent 正常只读取状态文件，失败或超时时再读取少量日志上下文。
-
-默认探活端点包括：
-
-```text
-/health
-/v1/models
-/server_info
-/get_server_info
-```
-
-### 精度测试数据集
-
-默认宿主机数据集路径为：
-
-```text
-/public/home/wanghy18/opencompass/data
-```
-
-容器内挂载路径为：
-
-```text
-/mnt/opencompass/data
-```
-
-精度测试前会先检查容器内评测工具环境，例如：
-
-```bash
-pip list | grep -E 'evalscope|opencompass|openai'
-```
-
-当前对以下本地数据集有特殊规则：
-
-- `gsm8k`：使用 `subset_list: ["default"]`，避免 `BuilderConfig 'main' not found`。
-- `humaneval`：本地评测规范化为 `humaneval`，避免 `openai_humaneval` subset 不匹配。
-- `math_500`：本地目录按 `math/test.jsonl` 处理，并检查 `answer` 字段。
-
-多模型多数据集测试时，每个模型独立推进自己的数据集队列；某个模型完成当前数据集后可直接进入下一个数据集，不等待其他模型。
+- 查询 DCU 节点资源、卡型、占用、端口和驱动信息。
+- 创建或复用 DCU 推理测试容器，统一模型挂载路径为 `/model/<模型名>`。
+- 基于 HYGON-AI `dcu-inference-cookbook` 优先生成或校验 vLLM/SGLang 启动脚本。
+- 使用 watcher 低频状态文件监控推理服务就绪，避免反复读取大日志。
+- 支持 `evalscope` 与 `opencompass` 精度测试。
+- 支持 OpenCompass 依赖检查、补装、`-m eval -r <timestamp>` 补评估和 `-m infer -r <timestamp>` 续跑推理。
+- 支持多模型、多数据集、多波次计划表，长队列可由后台 `auto_test_orchestrator.py` 跨会话推进。
+- 测试完成后按 `<模型, 数据集>` 汇总指标、异常、日志路径和输出目录。
 
 ## 目录结构
 
 ```text
-.
-├── SKILL.md
-├── DEVELOPMENT_LOG.md
-├── README.md
-├── scripts/
-│   ├── eval_accuracy.sh
-│   ├── watch_accuracy.sh
-│   ├── watch_llm_ready.sh
-│   └── watch_vllm_ready.sh
-└── references/
-    ├── auto_test_plan.md
-    ├── accuracy_report_template.md
-    ├── current_version.md
-    ├── model_deployment_cookbook.md
-    ├── vllm_test_guidance.md
-    ├── VLLM测试指导.md
-    ├── container/create_docker_container.md
-    ├── evaluation_framework/install_evaluation_framework.md
-    ├── node/nodes.md
-    └── rules/dcu_adaptation_rules.md
+dcu-llmtest-pipeline/
+  SKILL.md
+  DEVELOPMENT_LOG.md
+  README.md
+  references/
+    current_version.md
+    service_workflow.md
+    accuracy_workflow.md
+    auto_test_plan.md
+    model_deployment_cookbook.md
+    vllm_test_guidance.md
+    VLLM测试指导.md
+    accuracy_report_template.md
+    container/create_docker_container.md
+    evaluation_framework/install_evaluation_framework.md
+    node/nodes.md
+    rules/dcu_adaptation_rules.md
+  scripts/
+    auto_test_orchestrator.py
+    eval_accuracy.sh
+    watch_accuracy.sh
+    watch_llm_ready.sh
+    watch_vllm_ready.sh
 ```
 
-## 关键文件
+## 安装
 
-- `SKILL.md`：Skill 主流程、触发场景和执行规则。
-- `references/current_version.md`：当前版本特性和版本边界。
-- `references/accuracy_report_template.md`：精度报告字段和输出模板。
-- `references/model_deployment_cookbook.md`：HYGON-AI cookbook 的 vLLM/SGLang 最佳实践索引和适配规则。
-- `references/container/create_docker_container.md`：DCU 推理测试容器创建规范。
-- `references/auto_test_plan.md`：多模型并行/串行计划表生成规则。
-- `references/evaluation_framework/install_evaluation_framework.md`：`evalscope` 与 `opencompass` 安装方式。
-- `scripts/watch_llm_ready.sh`：通用 LLM 服务就绪监控脚本。
-- `scripts/eval_accuracy.sh`：基于 vLLM/SGLang API 的 evalscope 精度测试脚本。
+将本目录放到 Codex skills 目录：
 
-## 使用方式
-
-在 Codex 环境中安装或启用该 Skill 后，直接描述测试目标即可。例如：
-
-```text
-我要在 BW1100 上测试 Qwen3-32B，使用 vLLM，做精度测试。
+```bash
+mkdir -p ~/.codex/skills
+cp -a dcu-llmtest-pipeline ~/.codex/skills/
 ```
 
-或：
+如果使用自定义 `CODEX_HOME`：
 
-```text
-我要测试多个模型，帮我先查找可用节点并生成并行/串行计划表。
+```bash
+mkdir -p "$CODEX_HOME/skills"
+cp -a dcu-llmtest-pipeline "$CODEX_HOME/skills/"
 ```
 
-对于模型服务启动，Skill 会优先参考 HYGON-AI `dcu-inference-cookbook/docs/model-deployment/` 中对应框架和模型族的最佳实践。若 cookbook 未覆盖目标模型，vLLM 可继续参考本仓库的脱敏版 `VLLM测试指导.md`；SGLang 未覆盖时会请求用户提供适配脚本。
+## 触发方式
 
-## 版本信息
+当用户提到以下任务时，Codex 应使用本 skill：
 
-当前版本特性和边界见 [references/current_version.md](references/current_version.md)。
+- 模型推理
+- 性能测试
+- 精度测试
+- 继续评估、补评估、续跑
+- 批量测试、多个模型
+- 计划表、长队列后台执行
 
-## 版本日志
+## 工作模式
 
-完整版本变化见 [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)。
+### 通用完整流程
+
+适合单模型或少量模型：
+
+1. 查询可用节点资源。
+2. 创建或复用容器。
+3. 生成或校验 vLLM/SGLang 服务脚本。
+4. 启动服务并等待 watcher 确认 ready。
+5. 执行精度测试或用户提供的性能测试。
+6. 汇总结果和日志路径。
+
+### 高自定义流程
+
+适合用户已经提供启动脚本、容器、评测命令或特殊参数的任务。Skill 会保留用户逻辑，同时校验模型路径、卡型、端口、数据集挂载、依赖和日志路径。
+
+### 多模型自动计划
+
+适合多模型、多数据集、多波次或预计跨小时/跨天的长队列任务。执行前必须生成计划表并等待用户确认，确认后由后台 orchestrator 推进。
+
+## OpenCompass 续跑
+
+评测阶段失败但已有 prediction/result 时：
+
+```bash
+opencompass <OpenCompass配置> -m eval -r <timestamp> -w <work_dir>
+```
+
+推理阶段中断或需要补齐 prediction 时：
+
+```bash
+opencompass <OpenCompass配置> -m infer -r <timestamp> -w <work_dir>
+```
+
+常用依赖补装：
+
+```bash
+pip install math_verify latex2sympy2_extended human-eval
+```
+
+## 版本说明
+
+- 当前能力和边界：`references/current_version.md`
+- 变更历史：`DEVELOPMENT_LOG.md`
+
+## 注意事项
+
+- 本 skill 默认只处理 vLLM 和 SGLang 服务。
+- 模型宿主机路径必须由用户提供，不自动猜测。
+- 精度测试数据集默认宿主机路径为 `/public/home/wanghy18/opencompass/data`。
+- 长队列执行不依赖 Agent 会话保持在线，但后台 watcher/orchestrator 不能主动唤醒聊天会话；用户回来后读取状态文件和报告草稿即可补发总结。
