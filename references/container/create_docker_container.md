@@ -128,7 +128,13 @@ ssh -tt <Node_IP> "docker logs <container_name>"
 
 # 任务闭环与清理
 
-测试完成后，Agent 应询问用户是否清理环境。若需清理：
+测试完成后默认停止容器释放 DCU 资源，但不删除容器，便于复查环境：
+
+```bash
+ssh -tt <Node_IP> "docker stop <container_name>"
+```
+
+只有用户明确要求删除容器时再执行：
 
 ```bash
 ssh -tt <Node_IP> "docker stop <container_name> && docker rm <container_name>"

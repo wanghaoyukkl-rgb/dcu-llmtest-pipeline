@@ -7,6 +7,22 @@
 
 如果用户没有指定，默认使用 `evalscope`。如果用户要求和既有 OpenCompass 数据集/配置保持一致，则选择 `opencompass`。
 
+## pip 源规则
+
+所有 `pip install` 默认使用清华源，不要先使用默认源试错：
+
+```bash
+pip install <packages> -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+如需多条安装命令，可先设置：
+
+```bash
+export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+除非包解析明确失败，不要默认加 `--no-deps`；OpenCompass 的数学评测依赖存在传递依赖，跳过依赖安装容易漏掉 `antlr4-python3-runtime`。
+
 ## 容器内环境检查
 
 创建容器后、启动精度测试前，必须先确认容器中是否已有对应评测环境。
@@ -16,7 +32,7 @@
 ```bash
 docker exec <container_name> bash -lc "python - <<'PY'
 import importlib.util
-for name in ['evalscope', 'opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'human_eval']:
+for name in ['evalscope', 'opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'antlr4', 'human_eval']:
     print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
 PY"
 ```
@@ -27,7 +43,7 @@ PY"
 docker exec <container_name> bash -lc "pip list | grep evalscope"
 docker exec <container_name> bash -lc "python - <<'PY'
 import importlib.util
-for name in ['opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'human_eval']:
+for name in ['opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'antlr4', 'human_eval']:
     print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
 PY"
 ```
@@ -41,13 +57,13 @@ PY"
 ```bash
 git clone https://github.com/modelscope/evalscope.git
 cd evalscope
-pip install -e .
+pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 可选安装完整依赖。执行前询问用户是否安装完整依赖；用户确认后再执行：
 
 ```bash
-pip install '.[all]'
+pip install '.[all]' -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 安装后验证：
@@ -64,31 +80,32 @@ evalscope --help
 ```bash
 git clone https://github.com/open-compass/opencompass.git
 cd opencompass
-pip install -e .
+pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 安装常用依赖：
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 若需要 API 模型评测，额外确认 `openai` Python 包是否可用：
 
 ```bash
-pip install openai
+pip install openai -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 正式评测常用数据集依赖必须同时确认：
 
 - `math_verify`：math-500 等数学评测常用。
 - `latex2sympy2_extended`：数学表达式解析常用。
+- `antlr4-python3-runtime`：`latex2sympy2_extended` 的运行依赖，Python 导入名为 `antlr4`；缺失时 math-500 eval 会失败但 prediction 可能已完成。
 - `human_eval`：HumanEval 评测模块，对应 pip 包名为 `human-eval`。
 
 补装命令：
 
 ```bash
-pip install math_verify latex2sympy2_extended human-eval
+pip install math_verify latex2sympy2_extended antlr4-python3-runtime human-eval -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 安装后验证：
@@ -96,10 +113,10 @@ pip install math_verify latex2sympy2_extended human-eval
 ```bash
 python - <<'PY'
 import importlib.util
-for name in ['opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'human_eval']:
+for name in ['opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'antlr4', 'human_eval']:
     print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
 PY
-python -m opencompass --help
+opencompass --help || python /mnt/opencompass/run.py --help
 ```
 
 ## OpenCompass 续跑与补评估
@@ -121,6 +138,7 @@ opencompass <OpenCompass配置> -m infer -r <timestamp> -w <work_dir>
 - `<timestamp>` 是 OpenCompass 输出目录中的运行时间戳目录名，例如 `20260525_145907`。
 - `<work_dir>` 是时间戳目录的上一级输出目录。
 - 补评估前先确认依赖检查全部为 `OK`；否则容易出现只有部分数据集生成 summary 的情况。
+- 若 summary 中 `math-500` 为 `-` 且 `logs/eval/<模型>/math-500.out` 出现 `ModuleNotFoundError: No module named 'antlr4'`，先安装 `antlr4-python3-runtime`，再用 `-m eval -r <timestamp> -w <work_dir>` 补算分，不要重跑 infer。
 
 ## 工具选择规则
 

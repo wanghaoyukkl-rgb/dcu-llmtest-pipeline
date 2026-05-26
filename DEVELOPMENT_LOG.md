@@ -1,5 +1,20 @@
 # dcu-llmtest-pipeline 开发日志
 
+## v0.6.1-alpha - 2026-05-26
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.6.1-alpha`。
+- 所有 `pip install` 规则默认加清华源 `-i https://pypi.tuna.tsinghua.edu.cn/simple`，避免评测依赖安装时因默认源卡住。
+- OpenCompass 正式评测依赖检查补充 `antlr4`，安装说明补充 `antlr4-python3-runtime`，修复 `math-500` eval 阶段可能无得分输出的问题。
+- 新增 `references/opencompass_config_template.md`，默认固定 `gsm8k`、`math-500`、`openai_humaneval`，常规任务只替换 `openai_api_base`、`tokenizer_path`、`path`、`abbr`、`work_dir`。
+- 调整 OpenCompass 监控规则：长任务和多模型任务必须使用 orchestrator 写 `state.json/events.log/orchestrator.log`，不再依赖 Agent 会话内临时 `monitor_status.py`。
+- OpenCompass 任务不再额外生成 `<model>.eval.log` 外层评测日志，进度和错误优先读取 OpenCompass 输出目录下的 `logs/infer/`、`logs/eval/`、`summary/`。
+- `scripts/auto_test_orchestrator.py` 支持通过 `summary_glob`、`done_file` 或 `completion_check_cmd` 判断任务完成，并将事件同时写入 `events.log` 和 stdout，避免 `orchestrator.log` 为空。
+- 任务终态后默认执行 `docker stop <container>` 释放 DCU 资源，容器以 stopped 状态保留；失败任务释放当前资源后继续后续队列。
+- README 目录结构改为带注释的文件清单，说明每个入口文件、引用文档和脚本的用途。
+- 已对 `auto_test_orchestrator.py` 做语法编译检查，并用 `/tmp` 下的最小计划验证事件、状态和 summary 输出。
+
 ## v0.6.0-alpha - 2026-05-25
 
 ### 主要变化

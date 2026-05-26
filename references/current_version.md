@@ -1,12 +1,12 @@
 # 当前版本说明
 
-当前版本：`v0.6.0-alpha`
+当前版本：`v0.6.1-alpha`
 
 仅当用户询问 skill 当前能力、边界、版本变化，或维护 skill 时读取本文件。普通推理/测试任务不需要加载。
 
 ## 当前版本特性
 
-- 当前版本作为 `v0.6.0-alpha` 发布版，补充仓库 README，用于 GitHub 展示、安装说明和工作流索引。
+- 当前版本作为 `v0.6.1-alpha` 发布版，修正 OpenCompass 精度测试中的依赖安装、进度监控、外层日志和资源释放规则，并补充 GitHub README 目录结构说明。
 - 清理旧 Qwen 示例启动脚本和旧版 HTML 思维导图，减少仓库噪声。
 - `SKILL.md` 已瘦身为入口和引用导航，详细服务启动与精度测试流程拆分到 `references/service_workflow.md` 和 `references/accuracy_workflow.md`。
 - 删除拼写错误且已过时的旧评测框架文件，统一使用 `references/evaluation_framework/install_evaluation_framework.md`。
@@ -24,14 +24,16 @@
 - 支持 vLLM/SGLang 服务就绪监控：`watch_llm_ready.sh` 默认探活 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
 - 服务监控采用低 token 状态文件机制：Agent 正常只读取 `/tmp/llm_status.json`，失败或超时时才读取少量日志上下文。
 - 支持 `evalscope` 与 `opencompass` 两种精度评测工具选择；evalscope 可使用 `eval_accuracy.sh`，两者安装方式见 `references/evaluation_framework/install_evaluation_framework.md`。
-- 精度测试启动前必须检查容器内评测工具环境；OpenCompass 正式评测需要同时确认 `opencompass`、`openai`、`math_verify`、`latex2sympy2_extended`、`human_eval`，缺失时先补装再测试。
+- 所有 `pip install` 默认使用清华源 `-i https://pypi.tuna.tsinghua.edu.cn/simple`，避免默认源下载卡住。
+- 精度测试启动前必须检查容器内评测工具环境；OpenCompass 正式评测需要同时确认 `opencompass`、`openai`、`math_verify`、`latex2sympy2_extended`、`antlr4`、`human_eval`，缺失时先补装再测试。
+- 新增 OpenCompass API 配置模板 `references/opencompass_config_template.md`；默认只替换 `openai_api_base`、`tokenizer_path`、`path`、`abbr`、`work_dir`，数据集默认固定为 `gsm8k`、`math-500`、`openai_humaneval`。
 - 支持 OpenCompass 续跑/补评估规则：已有 prediction/result 时使用 `-m eval -r <timestamp> -w <work_dir>` 复评，推理中断或补缺 prediction 时使用 `-m infer -r <timestamp> -w <work_dir>`。
 - 默认数据集宿主机路径为 `/public/home/wanghy18/opencompass/data`，容器内挂载为 `/mnt/opencompass/data`；缺失时向用户索要路径。
 - evalscope 支持 gsm8k、humaneval、math_500 本地数据集特殊参数，避免 `BuilderConfig 'main' not found` 和 math_500 `answer` 字段错误。
 - 多模型多数据集测试按模型独立推进数据集队列：某个模型完成当前数据集后可立即进入下一个数据集，不等待其他模型完成。
 - 精度监控使用评测日志和 prediction 早期检查；每个模型默认只检查一次 prediction，评测启动 600 秒后读取前 3 条有文本样本，若 3 条均疑似乱码则中断当前任务、释放加速卡资源并保留容器。
-- 精度测试启动成功后，Agent 维护本轮计划状态清单并进入待机监控；默认每 10 分钟读取 watcher 状态文件，所有计划项完成后自动收集结果并推送测试报告。
-- 长队列后台 orchestrator 在任务失败、watcher `error/aborted`、prediction 乱码或超时时，记录错误、执行 release 命令释放资源、将任务标为 `failed/aborted/released`，并继续调度后续 pending 模型。
+- 精度测试启动成功后，短任务读取 watcher/orchestrator 状态；多模型或长时间 OpenCompass 必须由后台 orchestrator 维护 `state.json/events.log/orchestrator.log`，不要依赖 Agent 会话内临时监控脚本。
+- 长队列后台 orchestrator 在任务完成、失败、watcher `error/aborted`、prediction 乱码或超时时，记录错误、执行 release 命令释放资源、将任务标为终态，并继续调度后续 pending 模型；默认释放命令为 `docker stop <container>`，容器 stopped 保留。
 
 ## 当前版本边界
 
@@ -39,6 +41,6 @@
 - 高自定义模式已有入口描述，但执行步骤还未像完整流程一样细化。
 - 模型服务启动脚本不再依赖本地 Qwen 示例脚本；优先参考 HYGON-AI cookbook，cookbook 未覆盖时再查本地 VLLM 测试指导或请求用户提供脚本。
 - 自动计划模式暂只支持单机模型：一个模型任务只绑定一个节点，不考虑跨节点模型。
-- evalscope/opencompass 已有安装、选择、常见本地数据集规则和 OpenCompass 续跑规则；复杂数据集转换、离线依赖处理和 OpenCompass 具体配置模板仍需继续补齐。
+- evalscope/opencompass 已有安装、选择、常见本地数据集规则、OpenCompass 配置模板和续跑规则；复杂数据集转换和离线依赖处理仍需继续补齐。
 - 精度报告模板已移入 `references/accuracy_report_template.md`，仅在用户要求报告格式或需要生成正式报告时读取。
 - 自动报告到聊天依赖当前 Agent 会话仍可执行工具；后台 watcher/orchestrator 只能写状态、事件和报告文件，无法在会话结束或运行环境回收后主动唤醒 Agent。长队列的后续任务推进必须由 orchestrator 完成，而不是依赖 Agent 前台轮询。

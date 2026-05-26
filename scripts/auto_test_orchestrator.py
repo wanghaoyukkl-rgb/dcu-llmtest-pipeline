@@ -7,7 +7,7 @@
 设计原则偏保守：
 - 读取用户确认后的 plan.json。
 - 仅在节点和卡资源空闲时启动 pending 任务。
-- 持续读取每个任务 watcher 写出的状态 JSON。
+- 持续读取每个任务 watcher 写出的状态 JSON，或 OpenCompass 输出目录中的 summary 文件。
 - 遇到 error/aborted/timeout/prediction 乱码时记录失败，释放当前任务资源，
   然后继续调度后续 pending 任务。
 
@@ -171,8 +171,10 @@ def append_event(events_log: Path, task_id: str, event: str, detail: str = "") -
         "event": event,
         "detail": detail,
     }
+    line = json.dumps(record, ensure_ascii=False)
     with events_log.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        fh.write(line + "\n")
+    print(line, flush=True)
 
 
 def is_local_node(node):
@@ -236,13 +238,7 @@ def default_release_cmd(task):
     container = task.get("container")
     if not container:
         return ""
-    pattern = "evalscope|opencompass|vllm serve|sglang.launch_server|sglang"
-    return (
-        "docker exec "
-        + shlex.quote(str(container))
-        + " bash -lc "
-        + shlex.quote(f"pkill -f '{pattern}' || true")
-    )
+    return "docker stop " + shlex.quote(str(container))
 
 
 def release_task(task_state, events_log, reason):
@@ -317,6 +313,46 @@ def run_prediction_check(task_state):
         return {"status": "wait", "detail": proc.stdout.strip()[-1000:]}
 
 
+def run_completion_check(task_state):
+    cmd = task_state.get("completion_check_cmd")
+    if cmd:
+        proc = run_shell(str(cmd), task_state.get("node"), timeout=int(task_state.get("completion_timeout_sec", 60)))
+        if proc.returncode == 0:
+            return {
+                "status": "done",
+                "detail": (proc.stdout + proc.stderr).strip()[-1000:],
+                "source": "completion_check_cmd",
+            }
+
+    done_file = task_state.get("done_file")
+    if done_file:
+        proc = run_shell("test -s " + shlex.quote(str(done_file)), task_state.get("node"), timeout=30)
+        if proc.returncode == 0:
+            return {"status": "done", "detail": str(done_file), "source": "done_file"}
+
+    summary_glob = task_state.get("summary_glob")
+    if summary_glob:
+        proc = run_shell("ls -1 " + str(summary_glob) + " 2>/dev/null | tail -1", task_state.get("node"), timeout=30)
+        if proc.returncode == 0 and proc.stdout.strip():
+            return {
+                "status": "done",
+                "detail": proc.stdout.strip().splitlines()[-1],
+                "source": "summary_glob",
+            }
+
+    return None
+
+
+def mark_done(task_state, events_log, detail):
+    task_id = get_task_id(task_state)
+    task_state["status"] = "done"
+    task_state["result"] = detail
+    task_state["finished_at"] = task_state.get("finished_at") or iso_ts()
+    append_event(events_log, task_id, "done", str(detail)[-1000:])
+    if task_state.get("release_on_done", True):
+        release_task(task_state, events_log, "任务完成")
+
+
 def monitor_task(task_state, events_log, default_prediction_delay):
     task_id = get_task_id(task_state)
     status_file = task_state.get("status_file")
@@ -352,7 +388,13 @@ def monitor_task(task_state, events_log, default_prediction_delay):
                 release_task(task_state, events_log, "prediction 乱码")
                 return
 
+    completion = run_completion_check(task_state)
+    if completion and completion.get("status") == "done":
+        mark_done(task_state, events_log, json.dumps(completion, ensure_ascii=False))
+        return
+
     if not status_file:
+        task_state["last_check"] = iso_ts()
         return
     status = read_remote_json(str(status_file), task_state.get("node"))
     if not status:
@@ -361,12 +403,7 @@ def monitor_task(task_state, events_log, default_prediction_delay):
     task_state["last_check"] = iso_ts()
     watcher_status = str(status.get("status") or "").lower()
     if watcher_status == "done":
-        task_state["status"] = "done"
-        task_state["result"] = status.get("result", "")
-        task_state["finished_at"] = iso_ts()
-        append_event(events_log, task_id, "done", json.dumps(status, ensure_ascii=False)[-1000:])
-        if task_state.get("release_on_done", True):
-            release_task(task_state, events_log, "任务完成")
+        mark_done(task_state, events_log, json.dumps(status, ensure_ascii=False)[-1000:])
     elif watcher_status == "aborted":
         task_state["status"] = "aborted"
         task_state["result"] = status.get("result", "")

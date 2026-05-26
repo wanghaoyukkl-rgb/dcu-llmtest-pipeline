@@ -2112,7 +2112,7 @@ vllm serve /model/vllm-fp8-models/DeepSeek-R1-Channel-FP8 \
 
 ## Qwen3-VL-235B-A22B-Instruct
 
-需降级transformers：pip install transformers==4.57
+需降级transformers：pip install transformers==4.57 -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 ### 测试模式
 
