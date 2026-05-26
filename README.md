@@ -1,6 +1,6 @@
 # dcu-llmtest-pipeline
 
-DCU LLM 推理与精度测试自动化 Codex Skill。
+DCU LLM 推理与精度测试自动化 Skill。
 
 当前版本：`v0.6.1-alpha`
 
