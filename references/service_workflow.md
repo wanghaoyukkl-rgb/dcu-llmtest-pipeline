@@ -7,6 +7,7 @@
 - 服务脚本准备
 - Cookbook-first 规则
 - 本地 vLLM 补充来源
+- 本地 SGLang 补充来源
 - 已有脚本校验
 - 自动生成脚本
 - 启动与 watcher 监控
@@ -22,13 +23,14 @@
 执行规则：
 
 1. 先确认或推断推理框架：`vllm` 或 `sglang`。
-2. 根据模型名匹配模型族文档，例如 `qwen3.md`、`qwen3.5.md`、`deepseek-v3.2.md`、`glm-5.md`、`kimi-k2.5.md`。
-3. 从 cookbook 中提取匹配条目的环境变量、启动命令、推荐硬件、卡数、TP/PP/DP、dtype、量化方式、上下文长度、显存比例和特殊优化开关。
-4. 将 cookbook 命令适配到当前容器路径和端口约定；模型路径统一为 `/model/<模型名>`。
-5. 生成脚本时不得删除 DCU、NUMA、通信、量化、MoE、PD/IFB 调度相关环境变量。
-6. 默认使用 IFB；只有用户明确要求 PD 分离模式时才选择 PD 条目或参数。
-7. 匹配条目必须同时对齐模型、框架、加速卡型号、卡数和部署方式。若当前卡型与 cookbook 条目不一致，停止自动改写并询问用户是否提供适配脚本。
-8. 只有 cookbook 没有覆盖目标组合时，才回退到本地脚本模板或请求用户提供脚本。
+2. 在 skill 根目录执行 cookbook 缓存检查：`python3 scripts/update_cookbook_cache.py --check`。若用户要求强制更新 cookbook，则改为 `--force`。
+3. 根据模型名匹配模型族文档，例如 `qwen3.md`、`qwen3.5.md`、`deepseek-v3.2.md`、`glm-5.md`、`kimi-k2.5.md`。
+4. 从 cookbook 中提取匹配条目的环境变量、启动命令、推荐硬件、卡数、TP/PP/DP、dtype、量化方式、上下文长度、显存比例和特殊优化开关。
+5. 将 cookbook 命令适配到当前容器路径和端口约定；模型路径统一为 `/model/<模型名>`。
+6. 生成脚本时不得删除 DCU、NUMA、通信、量化、MoE、PD/IFB 调度相关环境变量。
+7. 默认使用 IFB；只有用户明确要求 PD 分离模式时才选择 PD 条目或参数。
+8. 匹配条目必须同时对齐模型、框架、加速卡型号、卡数和部署方式。若当前卡型与 cookbook 条目不一致，停止自动改写并询问用户是否提供适配脚本。
+9. 只有 cookbook 没有覆盖目标组合时，才回退到对应框架的本地补充测试指导、已有本地脚本模板，或请求用户提供脚本。
 
 ## 本地 vLLM 补充来源
 
@@ -44,6 +46,21 @@
 - `KME` / `K100_AI` / `K100AI` -> `K100AI`
 
 若补充文档对应卡型标记为 `暂无`、`不支持`、`有bug`、`待重新测试`、`预估需要双机`，标记 blocked 并询问用户处理方式。
+
+## 本地 SGLang 补充来源
+
+若 HYGON-AI cookbook 未覆盖目标模型，且用户选择 `sglang`，再读取：
+
+- `references/sglang_test_guidance.md`
+- `references/SGLANG测试指导.md`
+
+卡型别名规范化：
+
+- `NMZ` / `nmz` -> `BW1100` 或 `BW1101`
+- `BMZ` / `bmz` / `BW1000` -> `BW1000`
+- `KME` / `K100` / `K100AI` -> `K100AI`
+
+若补充文档对应卡型标记为 `暂无`、`不支持`、`有bug`、`有 bug`、`待重新测试`、`预估需要双机`、`双机`，或出现无法替换的 `<LOCAL_PATH>`/`[internal-link-removed]`，标记 blocked 并询问用户处理方式。文档中的 `<HOST_IP>`、`master_ip`、`NODE2_IP`、`--dist-init-addr`、端口和模型路径必须按当前任务重新生成。
 
 ## 已有脚本校验
 
@@ -115,7 +132,7 @@ ssh -tt <Node_IP> "nohup bash /tmp/watch_llm_ready.sh \
   > /tmp/watch_llm_ready.monitor.log 2>&1 & echo 监控进程PID: $!"
 ```
 
-最终就绪判定以 HTTP 探活为准：`/health`、`/v1/models`、`/server_info`、`/get_server_info` 中任一端点返回 2xx/3xx 才允许触发测试。
+最终就绪判定以 HTTP 探活为准：`/health`、`/v1/models`、`/server_info`、`/get_server_info` 中任一端点返回 2xx/3xx 后，先按 `references/accuracy_workflow.md` 执行 `/v1/chat/completions` curl 样本检查；响应正常且无乱码才允许触发测试。
 
 ## 状态处理与失败排查
 
@@ -131,11 +148,11 @@ ssh -tt <Node_IP> "cat /tmp/llm_status.json"
 |--------|------|------|
 | `starting` | 服务加载中 | 展示 `message` 和 `last_check`，继续等待 |
 | `almost_ready` | 日志接近就绪，HTTP 未确认 | 继续等待 |
-| `ready` | HTTP 探活已通过 | 立即进入测试 |
+| `ready` | HTTP 探活已通过 | 先执行 curl 样本检查，通过后进入测试 |
 | `error` | 检测到错误 | 展示 `detail`，询问是否排查或重启 |
 | `timeout` | 超过 30 分钟未就绪 | 展示 `detail` 和建议操作 |
 
-只有 `status == "ready"` 时才能触发精度/性能测试。
+只有 `status == "ready"` 且 curl 样本检查通过时，才能触发精度/性能测试。
 
 失败或超时时再读取少量日志：
 

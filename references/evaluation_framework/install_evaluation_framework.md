@@ -27,12 +27,12 @@ export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 创建容器后、启动精度测试前，必须先确认容器中是否已有对应评测环境。
 
-通用检查：
+通用检查用于确认评测工具本体是否可用；OpenCompass 的常用评测依赖不要逐个检查，按下一节直接安装。
 
 ```bash
 docker exec <container_name> bash -lc "python - <<'PY'
 import importlib.util
-for name in ['evalscope', 'opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'antlr4', 'human_eval']:
+for name in ['evalscope', 'opencompass', 'openai']:
     print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
 PY"
 ```
@@ -43,7 +43,7 @@ PY"
 docker exec <container_name> bash -lc "pip list | grep evalscope"
 docker exec <container_name> bash -lc "python - <<'PY'
 import importlib.util
-for name in ['opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'antlr4', 'human_eval']:
+for name in ['opencompass', 'openai']:
     print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
 PY"
 ```
@@ -95,27 +95,22 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 pip install openai -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-正式评测常用数据集依赖必须同时确认：
+正式评测常用数据集依赖必须直接安装，不要先逐个 import 检查：
 
 - `math_verify`：math-500 等数学评测常用。
 - `latex2sympy2_extended`：数学表达式解析常用。
 - `antlr4-python3-runtime`：`latex2sympy2_extended` 的运行依赖，Python 导入名为 `antlr4`；缺失时 math-500 eval 会失败但 prediction 可能已完成。
 - `human_eval`：HumanEval 评测模块，对应 pip 包名为 `human-eval`。
 
-补装命令：
+固定安装命令：
 
 ```bash
 pip install math_verify latex2sympy2_extended antlr4-python3-runtime human-eval -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-安装后验证：
+安装后只需确认 OpenCompass runner 可用；除非安装失败或 eval 报错，不再默认做全量 import 检查：
 
 ```bash
-python - <<'PY'
-import importlib.util
-for name in ['opencompass', 'openai', 'math_verify', 'latex2sympy2_extended', 'antlr4', 'human_eval']:
-    print(f'{name}:', 'OK' if importlib.util.find_spec(name) else 'MISSING')
-PY
 opencompass --help || python /mnt/opencompass/run.py --help
 ```
 
@@ -137,7 +132,7 @@ opencompass <OpenCompass配置> -m infer -r <timestamp> -w <work_dir>
 
 - `<timestamp>` 是 OpenCompass 输出目录中的运行时间戳目录名，例如 `20260525_145907`。
 - `<work_dir>` 是时间戳目录的上一级输出目录。
-- 补评估前先确认依赖检查全部为 `OK`；否则容易出现只有部分数据集生成 summary 的情况。
+- 补评估前先执行上面的固定安装命令；否则容易出现只有部分数据集生成 summary 的情况。
 - 若 summary 中 `math-500` 为 `-` 且 `logs/eval/<模型>/math-500.out` 出现 `ModuleNotFoundError: No module named 'antlr4'`，先安装 `antlr4-python3-runtime`，再用 `-m eval -r <timestamp> -w <work_dir>` 补算分，不要重跑 infer。
 
 ## 工具选择规则
@@ -214,9 +209,10 @@ BuilderConfig 'openai_humaneval' not found. Available: ['default']
 - 小样本测试优先使用评测工具的 `limit` 参数。
 - 若出现 `KeyError: 'answer'`，先检查 JSONL 是否保留 `answer` 字段；字段缺失时要求用户提供修正后的数据文件或确认转换规则。
 
-## evalscope 运行监控
+## 统一运行监控
 
-- evalscope 会生成评测日志和 prediction 相关文件；进度判断优先读取评测日志和 watcher 状态文件，不要固定时间读取模型服务日志。
-- 启动测试后，使用 `scripts/watch_accuracy.sh` 监控 `/tmp/eval_accuracy.log` 和 prediction 文件。
-- 如果 prediction 刚生成后连续 3 条样本疑似乱码，watcher 应中断当前模型评测/服务进程以释放加速卡资源，同时保留容器并向用户反馈。
+- evalscope 和 OpenCompass 都使用 `scripts/watch_accuracy.sh` 或 orchestrator 的统一 watcher 字段。
+- evalscope 通常监控 `/tmp/eval_accuracy.log`；OpenCompass 通常配置 `SUMMARY_GLOB`/`summary_glob` 指向 `summary/*.csv`，无外层日志时 `log_file` 可填 `none`。
+- 进度判断优先读取 `reports/task_plan.md`、watcher 状态文件和小型 JSON，不要固定时间读取模型服务日志。
+- prediction 文件不再用于早期乱码检查；乱码检查改为模型服务 `ready` 后、评测启动前的 curl 样本请求。
 - 多模型多数据集测试时，每个模型维护独立数据集队列；某模型完成一个数据集后可立即进入下一个数据集，不等待其他模型完成同一数据集。

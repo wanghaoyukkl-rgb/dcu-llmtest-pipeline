@@ -1,17 +1,19 @@
 # dcu-llmtest-pipeline
 
-DCU LLM 推理与精度测试自动化 Skill。
+DCU LLM 推理与精度测试自动化 Codex Skill。
 
-当前版本：`v0.6.1-alpha`
+当前版本：`v0.6.5-alpha`
 
 ## 能力概览
 
 - 查询 DCU 节点资源、卡型、占用、端口和驱动信息。
 - 创建或复用 DCU 推理测试容器，统一模型挂载路径为 `/model/<模型名>`。
 - 基于 HYGON-AI `dcu-inference-cookbook` 优先生成或校验 vLLM/SGLang 启动脚本。
+- 自动维护 cookbook 本地稀疏缓存，默认 3 天检查更新一次，用户要求时可强制更新。
+- cookbook 未覆盖时，可按框架读取本地脱敏版 vLLM/SGLang 测试指导作为补充来源。
 - 使用 watcher 低频状态文件监控推理服务就绪，避免反复读取大日志。
 - 支持 `evalscope` 与 `opencompass` 精度测试。
-- 支持 OpenCompass 依赖检查、补装、`-m eval -r <timestamp>` 补评估和 `-m infer -r <timestamp>` 续跑推理。
+- 支持 OpenCompass 常用评测依赖固定安装、`-m eval -r <timestamp>` 补评估和 `-m infer -r <timestamp>` 续跑推理。
 - 提供 OpenCompass API 评测配置模板，默认固定 `gsm8k`、`math-500`、`openai_humaneval`，只替换模型和服务相关字段。
 - 支持多模型、多数据集、多波次计划表，长队列可由后台 `auto_test_orchestrator.py` 跨会话推进。
 - 长队列任务结束后默认停止容器释放 DCU 资源，同时保留 stopped 容器便于排查。
@@ -32,18 +34,21 @@ dcu-llmtest-pipeline/
     model_deployment_cookbook.md               # HYGON-AI cookbook-first 的模型部署方案索引规则
     vllm_test_guidance.md                      # 本地 vLLM 测试指导的读取和筛选规则
     VLLM测试指导.md                            # 本地 vLLM 补充方案资料，含模型、卡型和启动建议
+    sglang_test_guidance.md                    # 本地 SGLang 测试指导的读取、脱敏占位和筛选规则
+    SGLANG测试指导.md                          # 本地 SGLang 补充方案资料，已脱敏
     opencompass_config_template.md             # OpenCompass API 评测配置模板，默认固化常用数据集
     accuracy_report_template.md                # 正式精度报告字段和输出模板
     container/
       create_docker_container.md               # DCU Docker 容器创建、挂载、命名和释放规则
     evaluation_framework/
-      install_evaluation_framework.md          # evalscope/OpenCompass 安装、依赖检查和补装规则
+      install_evaluation_framework.md          # evalscope/OpenCompass 安装、固定依赖安装和验证规则
     node/
       nodes.md                                 # DCU 节点、IP、卡型和资源查询命令清单
     rules/
       dcu_adaptation_rules.md                  # DCU 推理服务适配规则，覆盖环境变量、端口和日志约束
   scripts/
     auto_test_orchestrator.py                  # 后台任务编排器，推进队列、写状态/事件、终态释放资源
+    update_cookbook_cache.py                   # HYGON-AI cookbook 稀疏缓存检查、更新和状态记录
     eval_accuracy.sh                           # evalscope 精度测试启动脚本
     watch_accuracy.sh                          # 精度任务 watcher，检查日志、prediction 和异常状态
     watch_llm_ready.sh                         # 通用 vLLM/SGLang 服务 ready watcher
@@ -112,7 +117,7 @@ opencompass <OpenCompass配置> -m eval -r <timestamp> -w <work_dir>
 opencompass <OpenCompass配置> -m infer -r <timestamp> -w <work_dir>
 ```
 
-常用依赖补装：
+OpenCompass 常用评测依赖固定安装：
 
 ```bash
 pip install math_verify latex2sympy2_extended antlr4-python3-runtime human-eval \

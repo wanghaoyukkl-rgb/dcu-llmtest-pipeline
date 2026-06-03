@@ -7,6 +7,7 @@
 - 前置判断
 - 测试参数
 - 评测工具与数据集
+- 服务 ready 后 curl 样本检查
 - evalscope 执行
 - OpenCompass 执行与续跑
 - OpenCompass 配置模板
@@ -21,6 +22,8 @@
 
 精度测试可能持续数小时乃至 24 小时以上，不能依赖 Agent 会话保持连接来轮询。
 
+- 用户要求精度测试、继续评估、续跑，或 Agent 被唤醒后要继续推进精度任务时，如果需要生成/校验模型服务脚本、查询模型卡型/TP/PP/DP/部署参数，先按 `references/model_deployment_cookbook.md` 在 skill 根目录执行 `python3 scripts/update_cookbook_cache.py --check`。超过 3 天才更新 cookbook；未超过 3 天只记录本次检查。
+- 用户明确要求更新 cookbook 时，执行 `python3 scripts/update_cookbook_cache.py --force` 后再继续精度测试流程。
 - 单模型/短任务：可在节点宿主机上启动 `watch_accuracy.sh`，由它独立运行并写状态文件。
 - OpenCompass 长任务、多模型、多波次或后续有排队任务：必须启动 `scripts/auto_test_orchestrator.py`，由它读取 OpenCompass 输出目录或 watcher 状态，记录错误，终态后释放资源并启动后续排队任务。
 - Agent 会话只负责启动、低频读取状态和向用户汇报；长队列后续推进必须由 orchestrator 完成。
@@ -47,9 +50,30 @@
 启动前读取 `references/evaluation_framework/install_evaluation_framework.md`：
 
 - 检查并安装 `evalscope` 或 `opencompass`。
-- OpenCompass 正式评测前确认 `opencompass`、`openai`、`math_verify`、`latex2sympy2_extended`、`antlr4`、`human_eval`。
+- OpenCompass 正式评测和续跑前，直接执行常用评测依赖安装：`math_verify`、`latex2sympy2_extended`、`antlr4-python3-runtime`、`human-eval`；不要先逐个 import 检查这些常用依赖。
 - 数据集默认宿主机路径 `/public/home/wanghy18/opencompass/data`，容器内路径 `/mnt/opencompass/data`。
 - evalscope 的 gsm8k、humaneval、math_500 本地数据集特殊规则以该引用文件为准。
+
+## 服务 ready 后 curl 样本检查
+
+模型服务 watcher 状态为 `ready` 后、启动精度评测前，必须先执行一次 `/v1/chat/completions` 样本请求。响应是有效 JSON、能提取到非空文本且未疑似乱码时，才继续执行 evalscope/OpenCompass；请求失败、响应为空、非 JSON 或疑似乱码时，停止并释放当前任务资源，记录到 `reports/test_report.md`，若还有 pending 任务则继续下一个。
+
+默认 curl 模板：
+
+```bash
+curl http://<地址>/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "/model/<模型名>",
+    "messages": [
+      {"role": "user", "content": "介绍一下人工智能发展史"}
+    ],
+    "max_tokens": 500,
+    "temperature": 0.0
+  }'
+```
+
+后台 orchestrator 计划中推荐拆分服务启动和评测启动：`start_cmd` 只负责启动模型服务，`service_status_file` 指向 `/tmp/llm_status.json`，`eval_start_cmd` 负责启动精度评测。orchestrator 会在 `service_status_file` 为 `ready` 后自动执行上述 curl 检查，通过后再运行 `eval_start_cmd`。
 
 ## evalscope 执行
 
@@ -73,7 +97,7 @@ ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
 
 OpenCompass 不使用 `eval_accuracy.sh`。优先使用 OpenCompass 自己的输出目录作为进度与结果来源：`predictions/`、`results/`、`logs/infer/`、`logs/eval/`、`summary/`。不要额外生成 `<model>.eval.log`；后台任务只保留 `orchestrator.log/events.log/state.json`。
 
-启动前必须检查依赖；缺失时先补装：
+启动前必须直接安装常用评测依赖。`pip install` 对已安装包是幂等的，不要先逐个 import 检查这些依赖：
 
 ```bash
 docker exec <container_name> bash -lc \
@@ -132,24 +156,39 @@ python /mnt/opencompass/run.py <OpenCompass配置> -m infer -r <timestamp> -w <w
 
 ## watcher 监控
 
-监控脚本运行在宿主机，通过 `nohup` 挂后台，读取评测日志并写状态文件。不要固定时间读取模型服务日志；evalscope 测试进度优先从 `/tmp/eval_accuracy.log`、状态 JSON 和 prediction 文件判断。
+evalscope 快速验证和 OpenCompass 正式验证统一使用 `scripts/watch_accuracy.sh` 或 orchestrator 内置的同一套 watch 字段，不再拆分两套监控规则。watcher 运行在宿主机，通过 `nohup` 挂后台，写状态文件、`reports/test_report.md` 和 `reports/task_plan.md`。
 
-OpenCompass 进度判断规则：
+统一完成判断来源：
 
-- 优先读 orchestrator 的 `state.json` 和 `events.log`。
-- 其次按 OpenCompass 输出目录判断：`predictions/<模型>/*.json` 条数、`results/<模型>/*.json`、`summary/*.csv`。
-- 失败排查才读取 `logs/eval/<模型>/<dataset>.out` 或 `logs/infer/<模型>/<dataset>.out` 的尾部。
-- 不要创建只写空 `monitor_status.log` 的自定义监控体系；需要后台状态时必须由 orchestrator 写事件和状态。
+- `status_file`：watcher 写出的 JSON 状态。
+- `SUMMARY_GLOB` / `summary_glob`：OpenCompass summary 文件匹配。
+- `DONE_FILE` / `done_file`：非空完成标记文件。
+- `COMPLETION_CHECK_CMD` / `completion_check_cmd`：自定义完成检查命令。
+- `log_file`：evalscope 或自定义评测日志，用于错误和结果兜底判断。
 
-每个模型只做一次 prediction 早期检查：默认评测启动 600 秒后，读取前 3 条有文本样本；若 3 条均疑似乱码，则按错误处理并释放该模型资源。
+watch 间隔：
+
+- 短任务默认 10 分钟一次：`600` 秒。
+- 长时间任务默认 30 分钟一次：`1800` 秒。
+- 用户手动查询时，优先读 `reports/task_plan.md`，再读 `state.json/events.log`。
+
+失败排查才读取 `logs/eval/<模型>/<dataset>.out`、`logs/infer/<模型>/<dataset>.out` 或评测日志尾部。不要创建只写空 `monitor_status.log` 的自定义监控体系。
 
 ```bash
-ssh -tt <Node_IP> "nohup bash /tmp/watch_accuracy.sh \
+ssh -tt <Node_IP> "REPORT_FILE=<run_dir>/reports/test_report.md \
+  PLAN_FILE=<run_dir>/reports/task_plan.md \
+  TASK_ID=<任务ID> \
+  REPORT_MODEL=<模型名> \
+  REPORT_DATASET=<数据集> \
+  REPORT_NODE=<Node_IP> \
+  REPORT_OUTPUT_DIR=<输出目录> \
+  TEST_TOOL=<evalscope|opencompass> \
+  ACCELERATOR=<加速卡型号> \
+  SUMMARY_GLOB='<OpenCompass summary glob 可选>' \
+  nohup bash /tmp/watch_accuracy.sh \
   /tmp/eval_accuracy.log \
   /tmp/eval_status.json \
-  auto \
   <container_name> \
-  120 \
   600 \
   > /tmp/watch_accuracy.monitor.log 2>&1 & echo 监控进程PID: $!"
 ```
@@ -160,7 +199,7 @@ ssh -tt <Node_IP> "nohup bash /tmp/watch_accuracy.sh \
 
 短任务可以在当前会话内低频待机：
 
-- 默认每 10 分钟读取一次 watcher/orchestrator 状态；用户要求更久时可放宽到 15-30 分钟。
+- 默认每 10 分钟读取一次 watcher/orchestrator 状态；长时间任务按 30 分钟一次，或仅在用户手动查询时读取。
 - 每轮只读取小型 JSON 状态文件和必要的 `events.log` 尾部，不固定读取完整日志。
 - 仅当状态变化、出现 `error/aborted`、或所有计划项完成时更新用户。
 
@@ -171,7 +210,7 @@ ssh -tt <Node_IP> "nohup bash /tmp/watch_accuracy.sh \
 | `running` | 仍在测试 | 展示 `progress`，继续等待 |
 | `done` | 完成 | 收集完整结果 |
 | `error` | 出错 | watcher/orchestrator 已尝试释放资源；展示报错和日志路径 |
-| `aborted` | prediction 前 3 条疑似乱码 | 资源已释放，容器保留；反馈用户 |
+| `aborted` | curl 样本检查疑似乱码或主动中断 | 资源已释放，容器保留；反馈用户 |
 
 所有计划项完成后，自动收集结果并推送报告，不等用户再次询问。
 
@@ -200,11 +239,13 @@ nohup python3 auto_test_orchestrator.py --plan <run_dir>/plan.json --run-dir <ru
 orchestrator 必须：
 
 - 维护 `state.json` 和 `events.log`。
+- 持续生成并更新 `reports/test_report.md`，以简洁表格记录任务状态和测试结果。
+- 持续生成并更新 `reports/task_plan.md`，表头固定为 `模型、测试工具、加速卡型号、状态、时间戳`，状态只使用 `待测试/测试中/通过/异常`。
 - 事件必须同时追加到 `events.log`，并输出到 `orchestrator.log`，避免后台日志为空。
-- 出现服务启动失败、评测错误、watcher `error/aborted`、prediction 乱码或超时时执行 `release_cmd`。
+- 出现服务启动失败、curl 样本请求失败/乱码、评测错误、watcher `error/aborted` 或超时时执行 `release_cmd`。
 - 任务 `done/failed/aborted` 后默认执行 `release_cmd` 停止容器，释放 DCU 显存；容器以 stopped 状态保留，除非用户明确要求删除或保持运行。
 - 失败任务默认不阻塞后续 pending 任务。
-- 所有任务终态后在 `reports/` 写最终汇总草稿。
+- 所有任务终态后保留最终版 `reports/task_plan.md` 和 `reports/test_report.md`，并兼容写入 `reports/summary.md`。
 
 ## 资源释放
 
@@ -240,12 +281,18 @@ ssh -tt <Node_IP> "docker exec <container_name> cat /tmp/eval_accuracy.log"
 
 ## 报告生成
 
-报告默认包含：
+默认生成两个 Markdown 文件。
 
-- 测试环境：节点、卡型、镜像、框架、容器、模型路径、服务端口。
-- 计划总览：模型、数据集队列、状态、开始/结束时间、输出目录。
-- 指标表：按 `<模型, 数据集>` 汇总 accuracy、pass@k 等主要指标。
-- 异常与备注：启动警告、评测跳过、失败任务、乱码检测、依赖安装调整。
-- 后续建议：是否保留服务/容器、是否清理环境、是否补跑失败数据集。
+`reports/task_plan.md` 为任务计划表，内容保持固定表头：
 
-若用户需要正式报告格式，或自动报告需要沉淀为文档，读取 `references/accuracy_report_template.md`。
+| 模型 | 测试工具 | 加速卡型号 | 状态 | 时间戳 |
+|------|----------|------------|------|--------|
+
+状态只允许 `待测试`、`测试中`、`通过`、`异常`。初始化写入所有计划任务，后续任务启动、异常、完成等节点只更新状态栏和时间戳。
+
+`reports/test_report.md` 为测试报告，内容保持简洁，只包含一张结果表：
+
+| 任务ID | 模型 | 数据集 | 节点 | 状态 | 结果/进度 | 输出 |
+|--------|------|--------|------|------|-----------|------|
+
+正式报告或复盘文档才读取 `references/accuracy_report_template.md` 扩展环境、异常和后续建议。

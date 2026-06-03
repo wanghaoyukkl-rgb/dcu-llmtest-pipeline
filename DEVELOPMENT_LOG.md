@@ -1,5 +1,47 @@
 # dcu-llmtest-pipeline 开发日志
 
+## v0.6.5-alpha - 2026-06-02
+
+### 主要变化
+
+- 当前版本声明升级为 `v0.6.5-alpha`。
+- 多模型/长队列执行逻辑收敛为任务计划表驱动：执行前生成 `reports/task_plan.md`，表头固定为 `模型、测试工具、加速卡型号、状态、时间戳`。
+- `reports/task_plan.md` 状态统一为四种：`待测试`、`测试中`、`通过`、`异常`；后续仅在任务启动、异常、完成等状态变化节点更新时间戳。
+- `evalscope` 快速验证和 `opencompass` 正式验证统一使用 watcher 逻辑，完成判断统一支持 `status_file`、`summary_glob`、`done_file` 和 `completion_check_cmd`。
+- `scripts/watch_accuracy.sh` 支持无外层日志任务传入 `none`，并可通过 `SUMMARY_GLOB`、`DONE_FILE`、`COMPLETION_CHECK_CMD` 判断完成。
+- `scripts/auto_test_orchestrator.py` 新增 `watch_interval_sec` / `watch_mode` 规则：短任务默认 10 分钟，长时间任务默认 30 分钟，也支持用户手动查询 `reports/task_plan.md`。
+- `references/accuracy_workflow.md`、`references/auto_test_plan.md`、`references/evaluation_framework/install_evaluation_framework.md` 和 `references/current_version.md` 同步更新统一 watcher、四态任务计划表和双报告文件规则。
+- 按 skill-creator 校验要求移除 `SKILL.md` frontmatter 中的非标准 `version` 字段，版本号保留在正文与 `references/current_version.md`。
+
+## v0.6.4-alpha - 2026-05-29
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.6.4-alpha`。
+- 新增 `scripts/update_cookbook_cache.py`，用于维护 HYGON-AI cookbook 本地稀疏缓存，默认缓存到 `~/.cache/dcu-llmtest-pipeline/dcu-inference-cookbook`。
+- cookbook 更新状态写入 `~/.cache/dcu-llmtest-pipeline/cookbook_state.json`，记录 `last_update_utc`、`head_commit`、`head_commit_date` 和 `last_checked_utc`。
+- `references/model_deployment_cookbook.md` 增加 3 天 TTL 策略：读取 cookbook 前执行 `--check`，超过 3 天自动拉取；用户明确要求更新时执行 `--force`。
+- `references/accuracy_workflow.md` 和 `references/auto_test_plan.md` 增加精度测试/续跑/计划生成前的 cookbook 缓存检查要求。
+- 修改前已备份当前 skill 到 `/public/home/wanghy18/skill_backups/dcu-llmtest-pipeline_20260529-165721`。
+
+## v0.6.3-alpha - 2026-05-29
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.6.3-alpha`。
+- 新增脱敏版 `references/SGLANG测试指导.md`，移除人员标记、内网 IP、内部链接、内部主目录/日志路径和 shell prompt，仅保留模型、卡型和 SGLang 启动建议。
+- 新增 `references/sglang_test_guidance.md`，记录 SGLang 本地补充来源的使用优先级、模型索引、卡型别名、blocked 状态和占位符处理规则。
+- 更新 `SKILL.md`、`references/service_workflow.md`、`references/model_deployment_cookbook.md` 和 `references/auto_test_plan.md`，使 cookbook 未覆盖且框架为 SGLang 时可回退到本地补充指导。
+- 修改前已备份当前 skill 和原始 SGLang 指导到 `/public/home/wanghy18/skill_backups/dcu-llmtest-pipeline_20260529-163921`。
+
+## v0.6.2-alpha - 2026-05-27
+
+### 主要变化
+
+- `SKILL.md` 版本号升级为 `v0.6.2-alpha`。
+- OpenCompass 正式评测和续跑前，常用评测依赖改为直接执行固定安装命令：`pip install math_verify latex2sympy2_extended antlr4-python3-runtime human-eval -i https://pypi.tuna.tsinghua.edu.cn/simple`，不再先逐个 import 检查。
+- `scripts/auto_test_orchestrator.py` 将 `datetime.fromisoformat` 替换为兼容 Python 3.6 的时间解析，避免后台监控在老系统 Python 中崩溃，导致需要人工补齐 `state.json/events.log`。
+
 ## v0.6.1-alpha - 2026-05-26
 
 ### 主要变化

@@ -1,12 +1,13 @@
 # 当前版本说明
 
-当前版本：`v0.6.1-alpha`
+当前版本：`v0.6.5-alpha`
 
 仅当用户询问 skill 当前能力、边界、版本变化，或维护 skill 时读取本文件。普通推理/测试任务不需要加载。
 
 ## 当前版本特性
 
-- 当前版本作为 `v0.6.1-alpha` 发布版，修正 OpenCompass 精度测试中的依赖安装、进度监控、外层日志和资源释放规则，并补充 GitHub README 目录结构说明。
+- 当前版本作为 `v0.6.5-alpha` 发布版，统一 evalscope/OpenCompass watcher 执行逻辑，并新增四态 Markdown 任务计划表。
+- v0.6.4-alpha 新增 HYGON-AI cookbook 3 天 TTL 缓存更新机制和状态记录脚本。
 - 清理旧 Qwen 示例启动脚本和旧版 HTML 思维导图，减少仓库噪声。
 - `SKILL.md` 已瘦身为入口和引用导航，详细服务启动与精度测试流程拆分到 `references/service_workflow.md` 和 `references/accuracy_workflow.md`。
 - 删除拼写错误且已过时的旧评测框架文件，统一使用 `references/evaluation_framework/install_evaluation_framework.md`。
@@ -19,27 +20,32 @@
 - 容器创建固定使用 `docker run -itd`，容器名格式为 `<加速卡型号>-<YYYYMMDD>-<模型名>-<框架名>`。
 - 支持服务启动脚本准备：已有脚本直接使用，缺失时可由用户提供或参考 cookbook 生成。
 - 支持基于 HYGON-AI `dcu-inference-cookbook/docs/model-deployment/` 的 vLLM/SGLang 最佳实践生成模型服务启动脚本；详见 `references/model_deployment_cookbook.md`。
+- 支持 cookbook 本地稀疏缓存自动维护：读取 cookbook 前运行 `scripts/update_cookbook_cache.py --check`，超过 3 天才重新拉取；用户要求更新时运行 `--force`；状态写入 `~/.cache/dcu-llmtest-pipeline/cookbook_state.json`。
 - 支持本地 `VLLM测试指导.md` 作为 vLLM 补充方案来源；当 GitHub cookbook 未覆盖目标模型时，读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md` 查找测试方案。
+- 支持本地 `SGLANG测试指导.md` 作为 SGLang 补充方案来源；当 GitHub cookbook 未覆盖目标模型时，读取 `references/sglang_test_guidance.md` 和 `references/SGLANG测试指导.md` 查找测试方案。
 - `references/VLLM测试指导.md` 已隐去姓名和团队署名，仅保留模型名称、量化属性、卡型和测试方案。
+- `references/SGLANG测试指导.md` 已隐去人员标记、内网 IP、内部链接、内部主目录/日志路径和 shell prompt，仅保留模型名称、卡型和测试方案。
 - 支持 vLLM/SGLang 服务就绪监控：`watch_llm_ready.sh` 默认探活 `/health`、`/v1/models`、`/server_info`、`/get_server_info`。
 - 服务监控采用低 token 状态文件机制：Agent 正常只读取 `/tmp/llm_status.json`，失败或超时时才读取少量日志上下文。
 - 支持 `evalscope` 与 `opencompass` 两种精度评测工具选择；evalscope 可使用 `eval_accuracy.sh`，两者安装方式见 `references/evaluation_framework/install_evaluation_framework.md`。
 - 所有 `pip install` 默认使用清华源 `-i https://pypi.tuna.tsinghua.edu.cn/simple`，避免默认源下载卡住。
-- 精度测试启动前必须检查容器内评测工具环境；OpenCompass 正式评测需要同时确认 `opencompass`、`openai`、`math_verify`、`latex2sympy2_extended`、`antlr4`、`human_eval`，缺失时先补装再测试。
+- 精度测试启动前必须检查容器内评测工具环境；OpenCompass 正式评测和续跑前直接安装 `math_verify`、`latex2sympy2_extended`、`antlr4-python3-runtime`、`human-eval`，不要先逐个 import 检查这些常用依赖。
 - 新增 OpenCompass API 配置模板 `references/opencompass_config_template.md`；默认只替换 `openai_api_base`、`tokenizer_path`、`path`、`abbr`、`work_dir`，数据集默认固定为 `gsm8k`、`math-500`、`openai_humaneval`。
 - 支持 OpenCompass 续跑/补评估规则：已有 prediction/result 时使用 `-m eval -r <timestamp> -w <work_dir>` 复评，推理中断或补缺 prediction 时使用 `-m infer -r <timestamp> -w <work_dir>`。
 - 默认数据集宿主机路径为 `/public/home/wanghy18/opencompass/data`，容器内挂载为 `/mnt/opencompass/data`；缺失时向用户索要路径。
 - evalscope 支持 gsm8k、humaneval、math_500 本地数据集特殊参数，避免 `BuilderConfig 'main' not found` 和 math_500 `answer` 字段错误。
 - 多模型多数据集测试按模型独立推进数据集队列：某个模型完成当前数据集后可立即进入下一个数据集，不等待其他模型完成。
-- 精度监控使用评测日志和 prediction 早期检查；每个模型默认只检查一次 prediction，评测启动 600 秒后读取前 3 条有文本样本，若 3 条均疑似乱码则中断当前任务、释放加速卡资源并保留容器。
-- 精度测试启动成功后，短任务读取 watcher/orchestrator 状态；多模型或长时间 OpenCompass 必须由后台 orchestrator 维护 `state.json/events.log/orchestrator.log`，不要依赖 Agent 会话内临时监控脚本。
-- 长队列后台 orchestrator 在任务完成、失败、watcher `error/aborted`、prediction 乱码或超时时，记录错误、执行 release 命令释放资源、将任务标为终态，并继续调度后续 pending 模型；默认释放命令为 `docker stop <container>`，容器 stopped 保留。
+- 精度评测启动前改为服务 `ready` 后 curl 样本检查：调用 `/v1/chat/completions` 询问“介绍一下人工智能发展史”，响应正常且无乱码才继续评测，失败或疑似乱码则中断当前任务、释放加速卡资源并保留容器。
+- 精度测试启动成功后，evalscope 和 OpenCompass 都走统一 watcher 逻辑；短任务默认 10 分钟 watch 一次，长时间任务默认 30 分钟一次或由用户手动查询。
+- 多模型或长时间任务必须由后台 orchestrator 维护 `state.json`、`events.log`、`orchestrator.log`、`reports/task_plan.md` 和 `reports/test_report.md`，不要依赖 Agent 会话内临时监控脚本。
+- 长队列后台 orchestrator 在任务完成、失败、watcher `error/aborted`、curl 样本响应异常/乱码或超时时，记录错误、执行 release 命令释放资源、将任务标为终态，并继续调度后续 pending 模型；默认释放命令为 `docker stop <container>`，容器 stopped 保留。
+- 每次执行任务都会生成并持续更新 `reports/task_plan.md` 和 `reports/test_report.md`；任务计划表固定为 `模型/测试工具/加速卡型号/状态/时间戳`，状态只使用 `待测试/测试中/通过/异常`。
 
 ## 当前版本边界
 
 - 性能测试流程仍处于占位阶段，尚未提供标准压测脚本和吞吐/延迟指标汇总。
 - 高自定义模式已有入口描述，但执行步骤还未像完整流程一样细化。
-- 模型服务启动脚本不再依赖本地 Qwen 示例脚本；优先参考 HYGON-AI cookbook，cookbook 未覆盖时再查本地 VLLM 测试指导或请求用户提供脚本。
+- 模型服务启动脚本不再依赖本地 Qwen 示例脚本；优先参考 HYGON-AI cookbook，cookbook 未覆盖时再按框架查本地 vLLM/SGLang 测试指导或请求用户提供脚本。
 - 自动计划模式暂只支持单机模型：一个模型任务只绑定一个节点，不考虑跨节点模型。
 - evalscope/opencompass 已有安装、选择、常见本地数据集规则、OpenCompass 配置模板和续跑规则；复杂数据集转换和离线依赖处理仍需继续补齐。
 - 精度报告模板已移入 `references/accuracy_report_template.md`，仅在用户要求报告格式或需要生成正式报告时读取。
