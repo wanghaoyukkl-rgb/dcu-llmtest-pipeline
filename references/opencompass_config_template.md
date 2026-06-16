@@ -71,28 +71,29 @@ models = [
 
 ## 启动模板
 
-优先使用挂载的 OpenCompass 工程，并设置数据集缓存和代理排除：
+OpenCompass 评测必须通过 skill 自带固定脚本启动，避免宿主机/容器路径混用：
 
 ```bash
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
-export no_proxy=<NODE_IP>,localhost,127.0.0.1
-export NO_PROXY=<NODE_IP>,localhost,127.0.0.1
-export COMPASS_DATA_CACHE=/mnt/opencompass
-export PYTHONPATH=/mnt/opencompass:${PYTHONPATH:-}
-
-cd <RUN_DIR>
-if [ -f /mnt/opencompass/run.py ]; then
-  python /mnt/opencompass/run.py <CONFIG>
-else
-  opencompass <CONFIG>
-fi
+bash <RUN_DIR>/scripts/start_opencompass_safe.sh \
+  <TASK_ID> \
+  <CONTAINER> \
+  /mnt/dcu-llmtest-run/opencompass_configs/<TASK_ID>.py \
+  <RUN_DIR> \
+  /mnt/dcu-llmtest-run/<TASK_ID>/opencompass \
+  <NODE_IP>
 ```
+
+路径约束：
+
+- `<RUN_DIR>` 是宿主机路径，例如 `/public/home/.../dcu-qwen3-vllm-runs/<timestamp>`。
+- `<CONFIG>` 和 `<WORK_DIR>` 是容器路径，必须在 `/mnt/dcu-llmtest-run/...` 下。
+- 不得在宿主机执行 `mkdir -p /mnt/dcu-llmtest-run/...`。
 
 续跑/补评估：
 
 ```bash
-python /mnt/opencompass/run.py <CONFIG> -m eval -r <TIMESTAMP> -w <WORK_DIR>
-python /mnt/opencompass/run.py <CONFIG> -m infer -r <TIMESTAMP> -w <WORK_DIR>
+python /workspace/opencompass/run.py <CONFIG> -m eval -r <TIMESTAMP> -w <WORK_DIR>
+python /workspace/opencompass/run.py <CONFIG> -m infer -r <TIMESTAMP> -w <WORK_DIR>
 ```
 
 如果必须使用 `opencompass` 命令，参数保持一致：

@@ -52,11 +52,13 @@ PY"
 
 ## evalscope 安装
 
-源码安装：
+源码安装必须在容器内 `/workspace` 执行：
 
 ```bash
+mkdir -p /workspace
+cd /workspace
 git clone https://github.com/modelscope/evalscope.git
-cd evalscope
+cd /workspace/evalscope
 pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
@@ -75,13 +77,17 @@ evalscope --help
 
 ## OpenCompass 安装
 
-源码安装：
+默认源码安装必须在容器内 `/workspace` 执行。除非用户明确指定使用本地现有 OpenCompass 工程，否则不要挂载宿主机 OpenCompass 工程，也不要在节点宿主机上查找已有代码：
 
 ```bash
+mkdir -p /workspace
+cd /workspace
 git clone https://github.com/open-compass/opencompass.git
-cd opencompass
+cd /workspace/opencompass
 pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
+
+如果用户明确指定使用本地现有 OpenCompass 工程，则必须在创建容器时将该工程挂载到容器内 `/workspace/opencompass`，并在计划表或报告备注中记录来源为 `host-mounted:<path>`。默认源码安装来源记录为 `container-installed`。
 
 安装常用依赖：
 
@@ -108,10 +114,25 @@ pip install openai -i https://pypi.tuna.tsinghua.edu.cn/simple
 pip install math_verify latex2sympy2_extended antlr4-python3-runtime human-eval -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-安装后只需确认 OpenCompass runner 可用；除非安装失败或 eval 报错，不再默认做全量 import 检查：
+安装后只需确认 OpenCompass runner 可用；除非安装失败或 eval 报错，不再默认做全量 import 检查。OpenCompass 启动必须交给 `scripts/start_opencompass_safe.sh` 完成该检查，该脚本会在容器内确认 `/workspace/opencompass/run.py` 或已安装 `opencompass` 可用，并避免宿主机/容器路径混用：
 
 ```bash
-opencompass --help || python /mnt/opencompass/run.py --help
+bash <RUN_DIR>/scripts/start_opencompass_safe.sh \
+  <TASK_ID> <CONTAINER> \
+  /mnt/dcu-llmtest-run/opencompass_configs/<TASK_ID>.py \
+  <RUN_DIR> \
+  /mnt/dcu-llmtest-run/<TASK_ID>/opencompass \
+  <NODE_IP>
+```
+
+若遇到类似本次 OpenCompass config/import/plugin 启动问题，允许在容器内建立 OpenCompass configs 软链接并用 run.py 兜底启动：
+
+```bash
+mkdir -p /usr/local/lib/python3.10/dist-packages/autotest
+ln -sfn /workspace/opencompass/opencompass/configs \
+  /usr/local/lib/python3.10/dist-packages/autotest/configs
+cd /mnt/dcu-llmtest-run/opencompass_configs
+VLLM_PLUGINS="" python /workspace/opencompass/run.py xxx.py --debug
 ```
 
 ## OpenCompass 续跑与补评估
@@ -149,7 +170,7 @@ opencompass <OpenCompass配置> -m infer -r <timestamp> -w <work_dir>
 - 创建精度测试容器时，必须将数据集目录只读挂载：`-v <HOST_DATASET_PATH>:/mnt/opencompass/data:ro`。
 - 如果默认宿主机数据集目录不存在，不要自动下载大数据集；先向用户确认数据集来源、路径和是否允许下载。
 - `evalscope` 默认数据集路径约定：`/mnt/opencompass/data/<数据集名>`。
-- `opencompass` 默认优先使用 OpenCompass 工程内配置和数据集路径。
+- `/mnt/opencompass/data` 只表示数据集路径；OpenCompass 工程默认在 `/workspace/opencompass`，不得默认使用 `/mnt/opencompass` 承载工程代码。
 
 ## evalscope 本地数据集特殊规则
 
@@ -209,10 +230,11 @@ BuilderConfig 'openai_humaneval' not found. Available: ['default']
 - 小样本测试优先使用评测工具的 `limit` 参数。
 - 若出现 `KeyError: 'answer'`，先检查 JSONL 是否保留 `answer` 字段；字段缺失时要求用户提供修正后的数据文件或确认转换规则。
 
-## 统一运行监控
+## 运行结果判断
 
-- evalscope 和 OpenCompass 都使用 `scripts/watch_accuracy.sh` 或 orchestrator 的统一 watcher 字段。
-- evalscope 通常监控 `/tmp/eval_accuracy.log`；OpenCompass 通常配置 `SUMMARY_GLOB`/`summary_glob` 指向 `summary/*.csv`，无外层日志时 `log_file` 可填 `none`。
-- 进度判断优先读取 `reports/task_plan.md`、watcher 状态文件和小型 JSON，不要固定时间读取模型服务日志。
+- 旧运行监控脚本已移除；当前使用 `scripts/watch_model_once.sh` 做会话内 one-shot 观察。
+- evalscope 输出应写入当前任务输出目录。
+- OpenCompass 常规进度只读取 `logs/infer/`、`logs/eval/`，如果存在 `summary/` 则连带读取 summary；固定启动脚本产生的启动日志只用于启动阶段排障，不作为完成判断来源。
+- 服务阶段每 2 分钟调用一次 `watch_model_once.sh serve ...`；精度阶段每 20 分钟调用一次 `watch_model_once.sh accuracy ...`。
 - prediction 文件不再用于早期乱码检查；乱码检查改为模型服务 `ready` 后、评测启动前的 curl 样本请求。
 - 多模型多数据集测试时，每个模型维护独立数据集队列；某模型完成一个数据集后可立即进入下一个数据集，不等待其他模型完成同一数据集。

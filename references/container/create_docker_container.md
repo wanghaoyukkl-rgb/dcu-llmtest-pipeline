@@ -15,6 +15,8 @@ NOTE: 在 DCU 和 NVIDIA 平台创建容器需使用不同命令。本 skill 当
 - `FRAMEWORK`：`vllm` 或 `sglang`。
 - `HOST_MODEL_PATH`：用户提供的目标节点宿主机模型目录。
 - `HOST_DATASET_PATH`：精度测试所需数据集根目录，默认 `/public/home/wanghy18/opencompass/data`。
+- `RUN_DIR`：本次测试落盘目录，用于挂载脚本、报告、服务日志和 OpenCompass 输出。
+- `OPENCOMPASS_SOURCE`：OpenCompass 来源；默认 `container-installed`，表示在容器内 `/workspace/opencompass` 拉取并安装。仅当用户明确指定本地现有工程路径时，才使用 `host-mounted:<path>` 并挂载到 `/workspace/opencompass`。
 
 若用户未提供 `HOST_MODEL_PATH`，不要猜测模型目录，先询问用户提供具体路径。
 
@@ -66,13 +68,38 @@ date +"%Y%m%d"
 -v <HOST_DATASET_PATH>:/mnt/opencompass/data:ro
 ```
 
+本次测试目录挂载规则：
+
+```text
+-v <RUN_DIR>:/mnt/dcu-llmtest-run
+```
+
+服务日志必须写入：
+
+```text
+宿主机: <RUN_DIR>/serve_logs/<TASK_ID>.serve.log
+容器内: /mnt/dcu-llmtest-run/serve_logs/<TASK_ID>.serve.log
+```
+
+OpenCompass 输出必须写入：
+
+```text
+宿主机: <RUN_DIR>/<TASK_ID>/opencompass
+容器内: /mnt/dcu-llmtest-run/<TASK_ID>/opencompass
+```
+
 注意：
 
 - `:ro` 必须保留，模型目录以只读方式挂载。
 - 精度数据集目录也必须以只读方式挂载。
 - 若本次任务不包含精度测试，可省略数据集挂载项。
+- `/mnt/opencompass/data` 只用于数据集；不要将 OpenCompass 工程挂载到 `/mnt/opencompass`。
+- 除非用户明确指定使用本地现有 OpenCompass 工程，否则容器创建阶段不挂载宿主机 OpenCompass 工程，后续按安装流程在容器内 `/workspace/opencompass` 拉取和安装。
+- 如果用户明确指定本地现有 OpenCompass 工程，挂载规则为 `-v <HOST_OPENCOMPASS_PATH>:/workspace/opencompass:ro` 或按用户要求读写挂载，并在计划表/报告中记录来源 `host-mounted:<path>`。
 - vLLM 和 SGLang 启动命令中的模型路径都统一使用 `/model/<MODEL_NAME>`。
 - 不要把用户提供的宿主机路径直接写入服务启动命令。
+- 启动服务前必须 `mkdir -p <RUN_DIR>/serve_logs`，并将服务 stdout/stderr 重定向到该目录下的 `<TASK_ID>.serve.log`。报告和排查时优先使用宿主机路径，容器内对应路径为 `/mnt/dcu-llmtest-run/serve_logs/<TASK_ID>.serve.log`。
+- OpenCompass 进度观察只读取 `<RUN_DIR>/<TASK_ID>/opencompass/logs/infer`、`logs/eval` 和可选 `summary`。
 
 ## 4. DCU 容器创建命令
 
@@ -91,7 +118,7 @@ ssh -tt <Node_IP> "docker run -itd --name <container-name> \
   --network host \
   --group-add video \
   -v /opt/hyhal:/opt/hyhal:ro \
-  -v <workdir_on_node>:/mnt \
+  -v <RUN_DIR>:/mnt/dcu-llmtest-run \
   -v <HOST_MODEL_PATH>:/model/<MODEL_NAME>:ro \
   -v <HOST_DATASET_PATH>:/mnt/opencompass/data:ro \
   <Container_image_ID> \
@@ -107,6 +134,8 @@ ssh -tt <Node_IP> "docker run -itd --name <container-name> \
 - 容器内模型路径：`/model/<MODEL_NAME>`
 - 宿主机数据集目录：精度测试时必填，默认 `/public/home/wanghy18/opencompass/data`
 - 容器内数据集路径：`/mnt/opencompass/data`
+- OpenCompass 来源：默认 `container-installed`；若用户指定本地工程，则记录 `host-mounted:<path>` 和容器内路径 `/workspace/opencompass`
+- 服务日志目录：`<RUN_DIR>/serve_logs`
 - 框架：`vllm` 或 `sglang`
 - 加速卡型号
 
@@ -128,13 +157,13 @@ ssh -tt <Node_IP> "docker logs <container_name>"
 
 # 任务闭环与清理
 
-测试完成后默认停止容器释放 DCU 资源，但不删除容器，便于复查环境：
+单个任务完成或异常后，默认先停止容器释放 DCU 资源；多模型目标模式随后立即扫描计划表中的 `待测试` 任务，只有加速卡型号和卡数匹配时才启动下一项：
 
 ```bash
 ssh -tt <Node_IP> "docker stop <container_name>"
 ```
 
-只有用户明确要求删除容器时再执行：
+所有任务均进入 `通过` 或 `异常` 后，删除本轮 skill 管理的测试容器：
 
 ```bash
 ssh -tt <Node_IP> "docker stop <container_name> && docker rm <container_name>"

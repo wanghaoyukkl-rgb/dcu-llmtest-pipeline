@@ -1,6 +1,8 @@
-# 多模型自动测试计划编排
+# 多模型测试计划编排
 
 当用户提出多个模型需要测试、批量测试、多个节点并行/串行执行、生成计划表等需求时，必须先生成测试计划表，等待用户确认或修改后再开始执行。
+
+当前版本已移除旧模型服务监控和后台编排体系。不得生成旧 JSON 状态文件、旧事件流水或旧后台日志；多模型、长时间任务使用会话内目标闭环和一次性 watch 脚本推进。
 
 ## 适用范围
 
@@ -8,9 +10,10 @@
 - 默认一个节点有 8 张卡。
 - 一个测试任务只绑定一个节点。
 - 同一个节点可并行运行多个任务，但并行任务所需卡数之和不能超过该节点可用卡数。
+- 当同一节点空闲卡数足够覆盖多个任务时，默认并发执行；不得把可并发任务拆成串行波次。
 - 若任务需要 8 张卡，则独占一个节点。
-- 支持并行波次和串行波次：同一波次中的任务可并行启动，不同波次按顺序执行。
-- 多模型、多波次、或预计跨小时/跨天的计划必须使用后台 orchestrator 执行，不能依赖 Agent 会话持续在线。
+- 支持初始并行波次和动态补充调度：同一波次中的任务可并行启动；任一任务完成或异常后立即释放资源并扫描 `待测试` 队列，加速卡型号匹配且卡数满足时直接启动后续任务。
+- 用户给出明确终态目标或 `@goal [...]` 时进入目标模式，当前会话必须持续推进到所有任务进入 `通过` 或 `异常`。
 
 ## 计划生成流程
 
@@ -48,78 +51,49 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 - 部署模式：默认 `IFB`；只有用户明确要求时才使用 `PD`
 - 每个模型在目标节点上的宿主机模型目录；若用户未提供，先询问用户
 - 精度数据集宿主机根目录；默认 `/public/home/wanghy18/opencompass/data`，不存在时向用户索要路径
-- 精度评测工具；若选择 OpenCompass，确认容器内是否可运行 `opencompass`/`openai` 或 `/mnt/opencompass/run.py`，并在启动评测前直接安装 `math_verify`、`latex2sympy2_extended`、`antlr4-python3-runtime`、`human-eval`
+- 精度评测工具；默认 OpenCompass 正式评测
 - 每个模型是否有指定脚本或特殊参数
 
-可选字段：
+默认解释：
 
-- 优先级
-- 预计测试时长
-- 性能测试参数
-- 是否允许同节点并行多个小模型
-- OpenCompass 是否需要续跑：`-m eval -r <timestamp>` 用于已有 prediction/result 后补评估，`-m infer -r <timestamp>` 用于推理中断后补齐 prediction
+- 用户说“模型测试”“精度测试”“所有模型测试完毕”，且未明确说只做服务探活时，默认测试工具为 `opencompass`，数据集为 `gsm8k, math-500, openai_humaneval`。
+- `vllm-chat-probe`/`sglang-chat-probe` 只表示服务可用性冒烟测试，必须由用户明确要求“只 curl/只探活/只服务验证”才使用。
+- curl 样本请求只是 OpenCompass 或性能测试的前置门禁，不能作为任务完成条件。
 
 ### Step 3：查询模型启动资源需求
 
 查询前先按 `references/model_deployment_cookbook.md` 在 skill 根目录执行 cookbook 缓存检查：`python3 scripts/update_cookbook_cache.py --check`；用户要求更新时执行 `--force`。状态文件中的 `last_update_utc`、`head_commit`、`head_commit_date` 应记录到计划备注或报告中，便于追踪本次计划使用的 cookbook 版本。
 
-对每个模型，先根据 `references/model_deployment_cookbook.md` 到 HYGON-AI cookbook 中查询；若 cookbook 未覆盖，再按框架查询本地补充测试方案：`vllm` 读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md`，`sglang` 读取 `references/sglang_test_guidance.md` 和 `references/SGLANG测试指导.md`。
+对每个模型，先根据 `references/model_deployment_cookbook.md` 到 HYGON-AI cookbook 中查询精确匹配条目；若 cookbook 未覆盖，再按框架查询本地补充测试方案：`vllm` 读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md`，`sglang` 读取 `references/sglang_test_guidance.md` 和 `references/SGLANG测试指导.md`。一个任务只能选择一个来源，不得混合 cookbook、本地测试指导和历史脚本。
 
-- cookbook 文件路径
+计划备注中记录：
+
+- 来源文件或补充文档标题
 - 匹配模型条目
-- 推荐加速卡型号
-- 推荐卡数
-- 部署方式 IFB/PD
-- TP/PP/DP
-- dtype
-- 量化方式
-- 上下文长度
-- 框架版本
-- 特殊环境变量和启动参数
-- 来源：cookbook 文件或本地补充文档模型标题/卡型小节
+- 推荐加速卡型号、卡数、部署方式、TP/PP/DP
+- dtype、量化方式、上下文长度、框架版本和特殊环境变量
 - 容器内模型路径：固定为 `/model/<模型名>`
 
-若 cookbook 和本地补充来源中目标模型/框架/卡型/部署方式都没有匹配条目：
+若没有精确匹配条目，标记为 `blocked: need_script`，询问用户是否能够提供适配当前卡型的启动脚本；不要将该任务自动排入执行计划。
 
-- 标记为 `blocked: need_script`
-- 询问用户是否能够提供适配当前卡型的启动脚本
-- 不要将该任务自动排入执行计划
-
-若来源条目卡型与用户目标卡型或当前节点卡型不一致：
-
-- 标记为 `blocked: card_mismatch`
-- 展示来源卡型和当前卡型差异
-- 询问用户是否提供脚本或改用匹配卡型节点
-
-本地测试指导中的卡型别名必须先规范化：`NMZ` -> `BW1100/BW1101`，`BMZ` -> `BW1000`，`KME`/`K100`/`K100_AI` -> `K100AI`。SGLang 补充文档中出现 `<HOST_IP>`、`<LOCAL_PATH>`、`[internal-link-removed]` 时，不要原样排入计划；必须替换为当前环境值，无法替换则标记 blocked。
+若来源条目卡型与用户目标卡型或当前节点卡型不一致，标记为 `blocked: card_mismatch`，展示来源卡型和当前卡型差异，并询问用户是否提供脚本或改用匹配卡型节点。
 
 ### Step 4：端口分配
 
-端口不能重复。计划中所有任务必须分配唯一端口，即使任务位于不同节点，也优先保持全局唯一，方便排查和报告。
+端口来自单一来源脚本或框架默认值，但允许为了同节点并发或避开占用自主改写服务监听端口。计划中应检查端口冲突；发现端口占用或同波次冲突时，为任务分配目标节点上的空闲端口，并同步更新启动脚本、curl 探活端口、`probe_url` 和评测 API base。
 
-默认端口池：
+框架默认端口：
 
-- vLLM：`8000-8099`
-- SGLang：`30000-30099`
+- vLLM：`8000`
+- SGLang：`30000`
 
 分配规则：
 
 1. 先收集所有目标节点已监听端口。
-2. 从框架默认端口池中选择未被占用且计划内未使用的端口。
-3. 若默认端口已占用，向后递增。
-4. 若启动脚本中已有端口参数，执行前必须改写为计划分配端口。
-5. 每个任务的 watcher 使用同一个端口探活。
-
-### Step 4.1：模型路径与容器命名
-
-每个任务必须在计划中固定模型路径和容器名：
-
-- 宿主模型路径：来自用户提供的目标节点路径。
-- 容器模型路径：固定为 `/model/<模型名>`。
-- 容器挂载：`-v <宿主模型路径>:/model/<模型名>:ro`。
-- 容器名：`<加速卡型号>-<YYYYMMDD>-<模型名>-<框架名>`，必要时将模型名中的 `/` 和空格替换为 `-`。
-
-无论后续启动 vLLM 还是 SGLang，启动命令中的 model path 都必须使用计划表中的容器模型路径。
+2. 若来源脚本指定端口，计划优先沿用该端口；若未指定端口，先使用框架默认端口。
+3. 若端口已占用或同波次冲突，按从默认端口递增的方式选择空闲端口，例如 vLLM 使用 `8000,8001,8002...`，SGLang 使用 `30000,30001,30002...`。
+4. 端口适配只允许修改服务监听端口；不得顺手修改 `--dist-init-addr`、master/bootstrap 端口、host IP 等分布式通信字段，除非用户明确授权。
+5. 同一节点同一波次中的所有任务必须使用互不相同的服务端口。
 
 ### Step 5：计划编排算法
 
@@ -128,86 +102,22 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 1. 过滤掉 blocked 任务。
 2. 按所需卡数从大到小排序。
 3. 只在卡型匹配的节点中放置任务。
-4. 优先放入当前最早可用且剩余卡数足够的节点波次。
-5. 如果当前波次放不下，就在该节点创建下一波次。
-6. 同一节点同一波次任务可并行启动；下一波次必须等待上一波次任务完成并清理资源。
-7. 任务需要 8 卡时独占节点当前波次。
+4. 对每个节点维护当前波次的剩余空闲卡 ID 和已分配端口。任务放入波次时，立即分配互不重叠的具体 `cards`，不要让多个任务共享默认卡 `0`。
+5. 优先放入当前最早可用且剩余卡数足够的节点波次；如果当前波次放得下，必须放入该波次并发执行。
+6. 如果当前可用卡暂时放不下，就保留为 `待测试`，等待目标模式释放资源后再次扫描。
+7. 同一节点当前可用卡足够的任务必须并行启动；后续任务不按固定 wave 等待，而是在任一运行任务完成或异常后按 `所需卡数` 即时补位。
+8. 任务需要 8 卡时独占节点当前可用资源；释放前不得在同节点启动其它任务。
 
-不要跨节点拆分单个模型。
+强制并发示例：目标节点有 8 张空闲 BW1100，4 个任务各需 1 卡时，计划必须生成同一波次：
 
-### Step 5.1：多模型多数据集执行队列
+| 任务 | wave | cards | port |
+|------|------|-------|------|
+| model-a | 1 | 0 | 8000 |
+| model-b | 1 | 1 | 8001 |
+| model-c | 1 | 2 | 8002 |
+| model-d | 1 | 3 | 8003 |
 
-当一个计划包含多个模型和多个精度数据集时，调度粒度必须区分“模型服务”和“数据集评测子任务”：
-
-- 模型服务任务占用加速卡资源；数据集评测子任务复用该模型服务。
-- 每个模型维护自己的数据集队列，例如 `gsm8k -> math_500 -> humaneval`。
-- 某个模型完成当前数据集后，立即启动该模型的下一个数据集；不要等待其他模型完成同一数据集。
-- 某个模型完成全部数据集后，才能按用户确认释放模型服务和加速卡资源；容器可按用户要求保留。
-- 执行前必须生成 `reports/test_report.md` 和 `reports/task_plan.md`；任务计划表按确认后的计划执行，状态更新只改状态栏和时间戳。
-- 每个模型服务 `ready` 后、评测启动前必须执行一次 curl 样本请求。响应正常且无乱码才启动评测；请求失败或疑似乱码时，在 `reports/task_plan.md` 中标记为 `异常`，释放该模型资源，不影响其他模型继续执行。
-
-### Step 5.2：后台 orchestrator 执行规范
-
-当计划满足任一条件时，必须生成后台执行计划并启动 orchestrator：
-
-- 模型数大于 1，或存在串行/多波次排队。
-- 预计总耗时超过当前 Agent 会话可持续时间。
-- 用户明确要求“自动排队”“跑完一个继续下一个”“长时间任务无人值守”。
-
-落盘结构：
-
-```text
-<run_dir>/
-  plan.json
-  state.json
-  events.log
-  orchestrator.log
-  reports/
-    task_plan.md
-    test_report.md
-  task_<ID>/
-```
-
-`plan.json` 中每个任务至少包含：
-
-- `task_id`、`wave`、`model`、`framework`、`node`、`cards`、`container`、`port`
-- `start_cmd`：启动该模型服务的宿主机命令，必须可由 orchestrator 后台执行
-- `service_status_file`：模型服务 watcher 写出的状态 JSON，例如 `/tmp/llm_status.json`
-- `eval_start_cmd`：curl 样本检查通过后启动精度评测的宿主机命令
-- `status_file`：统一 watcher 写出的状态 JSON
-- `log_file`：主要评测日志；无外层日志时填 `none`
-- `summary_glob`、`done_file` 或 `completion_check_cmd`：统一 watcher 完成判断来源，evalscope/OpenCompass 都按这套字段配置
-- `probe_url`：curl 样本检查 URL；默认 `http://127.0.0.1:<port>/v1/chat/completions`
-- `served_model_path`：curl 请求体中的 `model` 字段，默认 `/model/<模型名>`
-- `release_cmd`：释放该模型评测/服务资源的命令；默认 `docker stop <container>`，容器 stopped 保留
-- `output_dir`：summary、prediction、日志所在目录
-- `test_tool`：`evalscope` 或 `opencompass`
-- `accelerator`：加速卡型号，用于 `reports/task_plan.md`
-- `release_on_done`：默认 `true`；只有用户明确要求保持服务时才设为 `false`
-- 若使用 OpenCompass，额外记录 `opencompass_config`、`work_dir`、`run_timestamp`、`summary_glob`、`resume_eval_cmd`、`resume_infer_cmd`
-
-`plan.json` 顶层 watch 间隔：
-
-- 短任务默认 `watch_interval_sec=600`。
-- 长时间任务默认 `watch_interval_sec=1800` 或 `watch_mode=long`。
-- 用户要求手动查询时，仍启动后台 orchestrator，但汇报时只读取 `reports/task_plan.md`、`state.json` 和 `events.log`。
-
-orchestrator 行为要求：
-
-1. 启动后读取 `plan.json`，初始化或恢复 `state.json`。
-2. 根据计划资源字段调度 pending 任务；同一节点同一卡 ID 不得被两个 running 任务同时占用。
-3. 任务启动、完成、失败、中断、释放资源都必须追加到 `events.log`，并同步输出到 `orchestrator.log`。
-4. 启动前写入 `reports/task_plan.md` 和 `reports/test_report.md`；任务计划表表头固定为 `模型/测试工具/加速卡型号/状态/时间戳`。
-5. `reports/task_plan.md` 的状态只使用 `待测试`、`测试中`、`通过`、`异常`；后续任务启动、异常、完成等节点只更新状态栏和时间戳。
-6. 任务 `start_cmd` 返回 0 后等待 `service_status_file` 为 `ready`，随后执行 curl 样本请求：`/v1/chat/completions`、提示词“介绍一下人工智能发展史”、`max_tokens=500`、`temperature=0.0`。
-7. curl 响应正常且无乱码后才执行 `eval_start_cmd`；curl 请求失败、响应为空、非 JSON 或疑似乱码时，标记为 `异常`，执行 `release_cmd`，然后继续调度后续 pending 任务。
-8. evalscope 和 OpenCompass 都按统一 watcher 字段判断完成：`status_file`、`summary_glob`、`done_file` 或 `completion_check_cmd` 任一达到完成即标记为 `通过`。
-9. watcher 返回 `error/aborted`、服务启动失败、评测命令非零退出或超时时，标记为 `异常`，执行 `release_cmd`，然后继续调度后续 pending 任务。
-10. 所有终态任务默认执行 `release_cmd`；默认释放动作是 `docker stop <container>`，释放 DCU 资源但保留容器。不得让完成任务持续占卡等待 Agent 回来。
-11. 若 OpenCompass 任务因 `math_verify`、`latex2sympy2_extended`、`antlr4`、`human_eval` 等评测依赖缺失导致 eval 阶段失败，但已有 prediction/result，事件日志必须记录可恢复命令：`opencompass <config> -m eval -r <timestamp> -w <work_dir>`。
-12. 若 OpenCompass 任务因推理阶段中断导致 prediction 缺失，事件日志必须记录可恢复命令：`opencompass <config> -m infer -r <timestamp> -w <work_dir>`。
-13. 失败任务默认不阻塞后续队列；仅当用户计划显式声明 `stop_on_failure: true` 时才停止后续任务。
-14. 所有任务进入终态后，保留最终版 `reports/task_plan.md` 和 `reports/test_report.md`；Agent 被用户唤醒后优先读取任务计划表并推送聊天总结。
+不得生成 `wave=1/2/3/4` 且全部 `cards=["0"]` 的串行计划。
 
 ### Step 6：计划表输出
 
@@ -220,48 +130,40 @@ orchestrator 行为要求：
 
 任务计划表：
 
-| 模型 | 测试工具 | 加速卡型号 | 状态 | 时间戳 |
-|------|----------|------------|------|--------|
+| 模型 | 测试工具 | 加速卡型号 | 加速卡信息 | 所需卡数 | 状态 | 时间戳 |
+|------|----------|------------|------------|----------|------|--------|
 
 状态取值只能是：
 
 - `待测试`：等待启动。
 - `测试中`：服务启动、curl 检查或评测执行中。
 - `通过`：任务完成。
-- `异常`：服务、curl、评测或 watcher 异常。
+- `异常`：服务、curl 或评测异常。
 
-节点、卡 ID、端口、容器名、模型路径、释放命令等详细字段写入 `plan.json`，不要塞进 Markdown 任务计划表。
+`加速卡信息` 记录节点和卡 ID，例如 `10.16.1.9 cards=0,1`。`所需卡数` 记录任务需要的卡数，例如 `1`、`4`、`8`。端口、容器名、模型路径、释放命令等详细字段放在计划说明文字中，不再生成旧 JSON 状态文件。
 
 计划表后必须询问用户确认或修改。用户确认前不得创建容器、启动服务或执行测试。
 
-### Step 7：执行计划
+### Step 7：执行边界
 
-用户确认后按波次执行：
+用户确认后可按初始并发计划执行容器创建、服务启动、curl 样本检查和评测启动。目标模式下，一个任务完成或异常后必须立即释放该任务资源，然后扫描 `reports/task_plan.md` 中的 `待测试` 任务；若当前节点加速卡型号匹配且空闲卡满足某任务 `所需卡数`，立即分配卡和端口、更新 `加速卡信息/状态/时间戳`，并启动该任务。不要等待整个 wave 全部结束。
 
-1. 对每个 ready 任务创建或复用容器；创建时使用 `docker run -itd`，并按计划表将宿主模型路径只读挂载到 `/model/<模型名>`。
-2. 生成或校验启动脚本；vLLM/SGLang 的模型路径必须统一为计划表中的容器模型路径。
-3. 将启动脚本端口改为计划表端口。
-4. 启动服务并用 `watch_llm_ready.sh` 监控 `/tmp/llm_status.json`。
-5. 服务 `ready` 后必须先执行 curl 样本检查；响应正常且无乱码后才能执行对应精度/性能测试。
-6. curl 检查失败或疑似乱码时，停止并释放该模型资源，在 `reports/test_report.md` 记录状态；若还有后续任务则继续调度。
-7. 同波次模型服务并行启动和监控；模型内部的数据集队列独立推进，不设置“所有模型完成同一数据集后再进入下一个数据集”的全局屏障。
-8. 某模型完成一个数据集后，立即启动该模型队列中的下一个数据集；某模型完成全部数据集后再释放该模型占用资源。
-9. 执行过程中若端口被占用，可重新分配未使用端口，并同步更新计划表和启动脚本。
-10. 若精度工具为 OpenCompass，启动评测前直接在容器内安装 `math_verify`、`latex2sympy2_extended`、`antlr4-python3-runtime`、`human-eval`，安装命令必须使用清华源；不要先逐个 import 检查这些常用依赖。eval 阶段失败但已有输出时，优先用 `-m eval -r <timestamp>` 补评估，infer 阶段中断时用 `-m infer -r <timestamp>` 续跑。
-11. 若精度工具为 OpenCompass，使用 `references/opencompass_config_template.md` 生成配置；除非用户明确要求，数据集固定为 `gsm8k, math-500, openai_humaneval`，只替换模型/API/输出目录字段。
+执行期间必须：
 
-若计划进入后台 orchestrator 模式，Agent 在用户确认后必须：
+1. 生成并维护 `reports/task_plan.md`。
+2. 生成并维护唯一测试报告 `reports/test_report.md`。
+3. 不生成重复摘要报告。
+4. 不生成旧 JSON 状态文件。
+5. 不启动旧后台编排脚本。
+6. 若精度工具为 OpenCompass，必须把 skill 自带 `scripts/start_opencompass_safe.sh` 复制到 `<run_dir>/scripts/start_opencompass_safe.sh`；`eval_start_cmd` 使用 `bash <run_dir>/scripts/start_opencompass_safe.sh ...` 调用该脚本，不依赖可执行权限。
+7. 必须把 skill 自带 `scripts/watch_model_once.sh` 复制到 `<run_dir>/scripts/watch_model_once.sh`；服务阶段每 2 分钟调用一次 `serve`，精度阶段每 20 分钟调用一次 `accuracy`。
 
-1. 生成 `<run_dir>/plan.json`，包含所有 ready 任务及其 `start_cmd`、`service_status_file`、`eval_start_cmd`、`probe_url`、`served_model_path`、`release_cmd`、`status_file`、`output_dir` 字段。
-2. 上传或引用 `scripts/auto_test_orchestrator.py`。
-3. 用 `nohup python3 auto_test_orchestrator.py --plan <run_dir>/plan.json --run-dir <run_dir>` 启动后台编排器。
-4. 向用户返回 `run_dir`、`state.json`、`events.log`、`orchestrator.log`、`reports/task_plan.md`、`reports/test_report.md` 路径。
-5. 后续用户询问状态时优先读取 `reports/task_plan.md`，再读 `reports/test_report.md`、`state.json` 和 `events.log`，只有失败排查时才读取少量任务日志。
+watch 脚本只读挂载目录中的服务日志、OpenCompass `logs/infer`、`logs/eval` 和可选 `summary`；不得引入临时监控脚本、后台循环脚本或旧编排器。
 
 ## 计划表确认提示
 
 输出计划后使用以下提示：
 
 ```text
-请确认这份测试计划是否可执行。您可以修改模型顺序、节点分配、卡数、端口、部署模式或删除 blocked 任务。确认后我将按波次执行。
+请确认这份测试计划是否可执行。您可以修改模型顺序、节点分配、卡数、部署模式、端口分配或删除 blocked 任务；确认后我将按目标模式在当前会话内推进，任务完成/异常后释放资源并立即扫描待测试模型，只有加速卡型号和卡数匹配时才继续调度；所有任务终态后会删除本轮测试容器。注意：旧后台监控/编排逻辑已移除，不会生成旧状态文件。
 ```

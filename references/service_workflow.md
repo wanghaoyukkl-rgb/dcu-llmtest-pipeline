@@ -1,6 +1,6 @@
-# 推理服务启动与监控流程
+# 推理服务启动流程
 
-本文件用于承接 `SKILL.md` 中的服务脚本准备、启动和低 token 监控细节。用户要启动、调整或排查 vLLM/SGLang 服务时读取。
+本文件用于承接 `SKILL.md` 中的服务脚本准备、启动、日志落盘和一次性 watch 细节。旧模型服务监控脚本已移除，当前使用 `scripts/watch_model_once.sh` 在会话内观察服务与评测状态。
 
 ## 目录
 
@@ -10,8 +10,9 @@
 - 本地 SGLang 补充来源
 - 已有脚本校验
 - 自动生成脚本
-- 启动与 watcher 监控
-- 状态处理与失败排查
+- 启动与日志落盘
+- 一次性 watch
+- 失败排查
 
 ## 服务脚本准备
 
@@ -25,12 +26,12 @@
 1. 先确认或推断推理框架：`vllm` 或 `sglang`。
 2. 在 skill 根目录执行 cookbook 缓存检查：`python3 scripts/update_cookbook_cache.py --check`。若用户要求强制更新 cookbook，则改为 `--force`。
 3. 根据模型名匹配模型族文档，例如 `qwen3.md`、`qwen3.5.md`、`deepseek-v3.2.md`、`glm-5.md`、`kimi-k2.5.md`。
-4. 从 cookbook 中提取匹配条目的环境变量、启动命令、推荐硬件、卡数、TP/PP/DP、dtype、量化方式、上下文长度、显存比例和特殊优化开关。
-5. 将 cookbook 命令适配到当前容器路径和端口约定；模型路径统一为 `/model/<模型名>`。
-6. 生成脚本时不得删除 DCU、NUMA、通信、量化、MoE、PD/IFB 调度相关环境变量。
+4. 从 cookbook 中提取精确匹配条目的环境变量、启动命令、推荐硬件、卡数、TP/PP/DP、dtype、量化方式、上下文长度、显存比例和特殊优化开关。匹配必须对齐模型名/模型变体、框架、卡型、卡数、部署方式和量化方式；不得用相邻模型、相似版本或不同 vLLM/SGLang 版本条目代替。
+5. 将 cookbook 命令只做最小适配：添加/设置 `HIP_VISIBLE_DEVICES`、把模型路径替换为当前容器路径 `/model/<模型名>`，以及在端口占用或同节点并发时新增/修改服务监听端口。不得改写 dtype、TP/PP/DP、量化、`-cc`/编译配置、调度参数、上下文长度、显存比例或其它来源测试设置。
+6. 生成脚本时不得删除 DCU、NUMA、通信、量化、MoE、PD/IFB 调度相关环境变量，也不得额外添加来源方案没有给出的优化环境变量，除非用户明确提供或授权。
 7. 默认使用 IFB；只有用户明确要求 PD 分离模式时才选择 PD 条目或参数。
-8. 匹配条目必须同时对齐模型、框架、加速卡型号、卡数和部署方式。若当前卡型与 cookbook 条目不一致，停止自动改写并询问用户是否提供适配脚本。
-9. 只有 cookbook 没有覆盖目标组合时，才回退到对应框架的本地补充测试指导、已有本地脚本模板，或请求用户提供脚本。
+8. 匹配条目必须同时对齐模型、框架、加速卡型号、卡数、部署方式和量化/模型变体。若任一字段不一致，停止自动生成并询问用户是否提供适配脚本。
+9. 只有 cookbook 没有覆盖目标组合时，才回退到对应框架的本地补充测试指导。不得把 cookbook 条目与本地测试指导条目合并；若补充来源也没有精确匹配，直接询问用户提供脚本，用户不能提供则跳过/blocked。
 
 ## 本地 vLLM 补充来源
 
@@ -45,7 +46,7 @@
 - `BMZ` / `bmz` / `BW1000` -> `BW1000`
 - `KME` / `K100_AI` / `K100AI` -> `K100AI`
 
-若补充文档对应卡型标记为 `暂无`、`不支持`、`有bug`、`待重新测试`、`预估需要双机`，标记 blocked 并询问用户处理方式。
+若补充文档对应卡型标记为 `暂无`、`不支持`、`有bug`、`待重新测试`、`预估需要双机`，或模型/量化/卡型/卡数/部署方式不是精确匹配，标记 blocked 并询问用户处理方式。
 
 ## 本地 SGLang 补充来源
 
@@ -60,7 +61,7 @@
 - `BMZ` / `bmz` / `BW1000` -> `BW1000`
 - `KME` / `K100` / `K100AI` -> `K100AI`
 
-若补充文档对应卡型标记为 `暂无`、`不支持`、`有bug`、`有 bug`、`待重新测试`、`预估需要双机`、`双机`，或出现无法替换的 `<LOCAL_PATH>`/`[internal-link-removed]`，标记 blocked 并询问用户处理方式。文档中的 `<HOST_IP>`、`master_ip`、`NODE2_IP`、`--dist-init-addr`、端口和模型路径必须按当前任务重新生成。
+若补充文档对应卡型标记为 `暂无`、`不支持`、`有bug`、`有 bug`、`待重新测试`、`预估需要双机`、`双机`，或模型/量化/卡型/卡数/部署方式不是精确匹配，或出现无法替换的 `<LOCAL_PATH>`/`[internal-link-removed]`，标记 blocked 并询问用户处理方式。除 `HIP_VISIBLE_DEVICES`、模型路径和服务监听端口外，不得替换 `<HOST_IP>`、`master_ip`、`NODE2_IP`、`--dist-init-addr` 等来源设置；这些字段无法直接用于当前环境时标记 blocked 并询问用户。
 
 ## 已有脚本校验
 
@@ -74,6 +75,7 @@
 - cookbook 条目的加速卡型号和部署方式是否与当前环境一致。
 - 关键 DCU 环境变量和特殊优化开关是否缺失。
 - 服务端口和日志路径是否明确。
+- 多模型计划中的服务日志是否写入 `<run_dir>/serve_logs/<task_id>.serve.log`。
 
 若脚本与 cookbook 明显不一致，先展示差异并建议更新；用户确认后再启动。若主要差异是卡型不匹配，直接询问用户是否提供适配脚本。
 
@@ -88,7 +90,7 @@ scripts/ 目录下未找到 <模型名> 的启动脚本。请选择：
 2. 由我参考 HYGON-AI cookbook 最佳实践自动生成一个新脚本
 ```
 
-自动生成时优先复用 cookbook：
+自动生成时优先复用 cookbook。严禁混用多个来源；一个脚本只能来自一个 cookbook 条目、一个本地测试指导条目，或用户提供的一份脚本：
 
 - 环境变量区：DCU、NUMA、通信、量化、MoE、PD/IFB、框架专属优化开关。
 - 启动命令区：vLLM 的 `vllm serve` 或 SGLang 的 `python3 -m sglang.launch_server`。
@@ -96,68 +98,49 @@ scripts/ 目录下未找到 <模型名> 的启动脚本。请选择：
 
 生成规则：
 
-- 环境变量区完整保留，不得删改 cookbook 和 `references/rules/dcu_adaptation_rules.md` 中的 DCU 底层环境变量。
+- 环境变量区和启动参数完整保留来源方案；只允许额外添加/设置 `HIP_VISIBLE_DEVICES`，以及按计划端口设置服务监听端口。
 - 模型路径替换为 `/model/<模型名>`。
-- TP/PP/DP、dtype、量化、上下文长度、显存比例等以匹配条目为准。
+- TP/PP/DP、dtype、量化、上下文长度、显存比例、`-cc`/编译配置等以匹配条目为准，不得为了启动成功做推断或试错改写。端口可为避免冲突或支持同节点并发而自主改写，但必须同步脚本、计划、curl 探活和评测 API base。
 - 默认 IFB；只有用户明确要求 PD 时才使用 PD。
 - 脚本开头写明模型、框架、cookbook 文件、卡型、部署方式、推荐卡数、TP/PP/DP、dtype、量化方式、端口。
-- vLLM 默认日志建议 `/tmp/vllm_serve.log`；SGLang 默认日志建议 `/tmp/sglang_serve.log`。
-- 若 cookbook 没有目标规模的明确 TP，才根据模型规模、可用卡数、卡型和用户目标推断，并说明依据。
+- 服务脚本不应把日志固定写死到容器 `/tmp`。由启动器将 stdout/stderr 重定向到 run 目录挂载路径，例如 `/mnt/dcu-llmtest-run/serve_logs/<task_id>.serve.log`；宿主机对应路径为 `<run_dir>/serve_logs/<task_id>.serve.log`。
+- 若来源没有明确卡数、TP 或关键参数，标记 blocked 并询问用户提供脚本；不得根据模型规模、可用卡数或经验推断。
 
 生成后展示脚本全文，用户确认后保存为 `scripts/serve_<模型名>.sh`。
 
-## 启动与 watcher 监控
+## 启动与日志落盘
 
 将脚本上传到目标节点并在容器内后台运行：
 
 ```bash
 scp scripts/serve_<模型名>.sh <Node_IP>:/tmp/serve_<模型名>.sh
 
+ssh -tt <Node_IP> "mkdir -p <run_dir>/scripts <run_dir>/serve_logs"
+
+scp scripts/watch_model_once.sh <Node_IP>:<run_dir>/scripts/watch_model_once.sh
+
 ssh -tt <Node_IP> "docker exec -d <container_name> bash -c \
-  'bash /tmp/serve_<模型名>.sh > <日志路径> 2>&1'"
+  'bash /tmp/serve_<模型名>.sh > /mnt/dcu-llmtest-run/serve_logs/<task_id>.serve.log 2>&1'"
 ```
 
-服务启动后立即启动宿主机 watcher，不在 Agent 会话里反复读完整日志：
+启动后每 2 分钟调用一次 one-shot watch，直到服务 ready、异常或超时。watch 只读取宿主机挂载日志最后 10 行并做 HTTP 探活，不生成状态文件：
 
 ```bash
-scp scripts/watch_llm_ready.sh <Node_IP>:/tmp/watch_llm_ready.sh
-
-ssh -tt <Node_IP> "nohup bash /tmp/watch_llm_ready.sh \
-  <container_name> \
-  <日志路径> \
-  /tmp/llm_status.json \
-  <端口> \
-  <vllm|sglang> \
-  '/health,/v1/models,/server_info,/get_server_info' \
-  > /tmp/watch_llm_ready.monitor.log 2>&1 & echo 监控进程PID: $!"
+ssh -tt <Node_IP> "bash <run_dir>/scripts/watch_model_once.sh \
+  serve <task_id> <run_dir> <container_name> <端口> <vllm|sglang>"
 ```
 
 最终就绪判定以 HTTP 探活为准：`/health`、`/v1/models`、`/server_info`、`/get_server_info` 中任一端点返回 2xx/3xx 后，先按 `references/accuracy_workflow.md` 执行 `/v1/chat/completions` curl 样本检查；响应正常且无乱码才允许触发测试。
 
-## 状态处理与失败排查
+## 失败排查
 
-Agent 正常每 30-60 秒只读取状态文件：
-
-```bash
-ssh -tt <Node_IP> "cat /tmp/llm_status.json"
-```
-
-状态处理：
-
-| status | 含义 | 操作 |
-|--------|------|------|
-| `starting` | 服务加载中 | 展示 `message` 和 `last_check`，继续等待 |
-| `almost_ready` | 日志接近就绪，HTTP 未确认 | 继续等待 |
-| `ready` | HTTP 探活已通过 | 先执行 curl 样本检查，通过后进入测试 |
-| `error` | 检测到错误 | 展示 `detail`，询问是否排查或重启 |
-| `timeout` | 超过 30 分钟未就绪 | 展示 `detail` 和建议操作 |
-
-只有 `status == "ready"` 且 curl 样本检查通过时，才能触发精度/性能测试。
-
-失败或超时时再读取少量日志：
+失败时读取少量日志用于汇报，但不得自动尝试修改参数、切换来源或重启：
 
 ```bash
-ssh -tt <Node_IP> "docker exec <container_name> tail -n 80 <日志路径>"
+ssh -tt <Node_IP> "bash <run_dir>/scripts/watch_model_once.sh \
+  serve <task_id> <run_dir> <container_name> <端口> <vllm|sglang>"
 ```
+
+只读取宿主机 `<run_dir>/serve_logs/<task_id>.serve.log` 的尾部。不要从容器内复制或生成服务日志。
 
 不要读取完整日志，除非用户明确要求。

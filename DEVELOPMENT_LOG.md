@@ -1,5 +1,50 @@
 # dcu-llmtest-pipeline 开发日志
 
+## v0.7.2-watch-queue-cleanup - 2026-06-16
+
+### 主要变化
+
+- `SKILL.md` 和 `references/current_version.md` 当前版本升级为 `v0.7.2-watch-queue-cleanup`。
+- 将执行路径进一步收敛到一次性 `scripts/watch_model_once.sh`、`reports/task_plan.md` 和 `reports/test_report.md`，明确不再生成旧 JSON 状态文件、旧事件流水、旧后台日志或重复摘要报告。
+- 强化目标模式队列清理规则：单个任务终态后默认停止容器释放 DCU 资源；仍有 `待测试` 任务时，按加速卡型号和所需卡数扫描计划表并补充调度。
+- 明确所有任务进入终态后，对本轮 skill 管理的测试容器执行 `docker stop` 后再 `docker rm` 删除。
+- README 同步更新当前版本号、一次性 watch、会话内队列调度和旧后台状态清理说明。
+
+## v0.7.1-watch-alpha - 2026-06-08
+
+### 主要变化
+
+- 新增 `scripts/watch_model_once.sh`：服务阶段读取 `serve_logs` 尾 10 行并探活；精度阶段只读 OpenCompass `logs/infer`、`logs/eval` 和可选 `summary`。
+- 固化目标模式：用户给出明确终态或 `@goal` 时，在当前会话内推进计划、启动、watch、curl、OpenCompass、报告、释放和待测模型补充调度。
+- `reports/task_plan.md` 表头新增 `加速卡信息` 和 `所需卡数`，用于多模型完成后即时扫描待测试任务并补位调度。
+- 保持旧后台编排和旧 JSON 状态文件移除状态，不恢复跨会话守护进程。
+
+## v0.7.0-reset-alpha - 2026-06-08
+
+### 主要变化
+
+- 将当前 skill 备份到 `/public/home/wanghy18/skill_backups/dcu-llmtest-pipeline-20260608-115609`。
+- 移除旧模型服务监控和后台编排脚本，后续模型服务监控逻辑待新版本重写。
+- 当前执行路径只保留 `reports/test_report.md` 作为唯一测试报告，`reports/task_plan.md` 作为人工计划表。
+- 当前版本不再生成旧 JSON 状态文件、旧事件流水、旧后台日志或重复摘要报告。
+- 保留 OpenCompass safe launcher、精度执行脚本和 cookbook 缓存脚本。
+
+## v0.6.8-alpha - 2026-06-08
+
+### 主要变化
+
+- 将服务监听端口纳入允许自主适配范围。多模型同节点并发或目标端口被占用时，可自动分配空闲端口。
+- 端口适配必须同步更新启动脚本、`plan.json` 的 `port`、watcher 探活端口、`probe_url` 和评测 API base，并在脚本注释和计划来源说明中记录。
+- 仍禁止自动修改 dtype、TP/PP/DP、量化、`-cc`/编译配置、调度参数、上下文长度、显存比例等非端口测试设置。
+
+## v0.6.7-alpha - 2026-06-08
+
+### 主要变化
+
+- 修复 `watch_llm_ready.sh` / `watch_vllm_ready.sh` 状态文件非原子写入导致 orchestrator 读到半截 JSON 并误判服务失败的问题。
+- `auto_test_orchestrator.py` 将 `status_file is not valid JSON` 视为临时状态并继续等待，不再直接标记异常和释放容器。
+- watcher 检测到服务容器已经停止时写出 `aborted` 后退出，避免任务终态后残留 watcher 持续覆盖 `llm_status.json`。
+
 ## v0.6.5-alpha - 2026-06-02
 
 ### 主要变化
