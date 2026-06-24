@@ -64,17 +64,22 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 
 查询前先按 `references/model_deployment_cookbook.md` 在 skill 根目录执行 cookbook 缓存检查：`python3 scripts/update_cookbook_cache.py --check`；用户要求更新时执行 `--force`。状态文件中的 `last_update_utc`、`head_commit`、`head_commit_date` 应记录到计划备注或报告中，便于追踪本次计划使用的 cookbook 版本。
 
-对每个模型，先根据 `references/model_deployment_cookbook.md` 到 HYGON-AI cookbook 中查询精确匹配条目；若 cookbook 未覆盖，再按框架查询本地补充测试方案：`vllm` 读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md`，`sglang` 读取 `references/sglang_test_guidance.md` 和 `references/SGLANG测试指导.md`。一个任务只能选择一个来源，不得混合 cookbook、本地测试指导和历史脚本。
+对每个模型，先根据 `references/model_deployment_cookbook.md` 到 HYGON-AI cookbook 中查询规范化精确匹配条目；若未命中，按“模型名受控模糊匹配”生成最多 3 个 cookbook 候选，并在计划说明中列出候选条目、差异 token 和风险。用户确认某个模糊候选前，该任务不得进入可执行波次。若 cookbook 无精确匹配且用户未确认任何模糊候选，再按框架查询本地补充测试方案：`vllm` 读取 `references/vllm_test_guidance.md` 和 `references/VLLM测试指导.md`，`sglang` 读取 `references/sglang_test_guidance.md` 和 `references/SGLANG测试指导.md`。一个任务只能选择一个来源，不得混合 cookbook、本地测试指导和历史脚本。
 
 计划备注中记录：
 
 - 来源文件或补充文档标题
 - 匹配模型条目
+- 若为模糊匹配候选：原始目标模型名、候选条目名、差异 token、是否已获用户确认
 - 推荐加速卡型号、卡数、部署方式、TP/PP/DP
 - dtype、量化方式、上下文长度、框架版本和特殊环境变量
-- 容器内模型路径：固定为 `/model/<模型名>`
+- KVCache：根据服务启动命令判断，包含 `--kv-cache-dtype fp8...` 时填 `kvcache_fp8`，否则填 `default`
+- 服务脚本模型路径：优先使用目标节点绝对路径，通常位于 `/public/opendas/DL_DATA/llm-models/`；若该路径是软链接，同时记录 `readlink -f` 真实落点。
+- 若来源命令包含 `rm`、`rm -rf`、`rmdir` 等清理命令，计划备注中记录“已按规则省略清理命令”。
 
-若没有精确匹配条目，标记为 `blocked: need_script`，询问用户是否能够提供适配当前卡型的启动脚本；不要将该任务自动排入执行计划。
+若没有规范化精确匹配条目但存在模糊候选，标记为 `blocked: fuzzy_match_confirmation_required`，询问用户是否使用候选；不要将该任务自动排入执行计划。用户确认后，更新计划来源为该 cookbook 候选并继续卡数/端口编排。
+
+若没有精确匹配条目且没有合理模糊候选，标记为 `blocked: need_script`，询问用户是否能够提供适配当前卡型的启动脚本；不要将该任务自动排入执行计划。
 
 若来源条目卡型与用户目标卡型或当前节点卡型不一致，标记为 `blocked: card_mismatch`，展示来源卡型和当前卡型差异，并询问用户是否提供脚本或改用匹配卡型节点。
 
@@ -130,10 +135,10 @@ ssh <Node_IP> "ss -lnt 2>/dev/null | awk '{print \$4}' | sed -n '2,\$p'"
 
 任务计划表：
 
-| 模型 | 测试工具 | 加速卡型号 | 加速卡信息 | 所需卡数 | 状态 | 时间戳 |
-|------|----------|------------|------------|----------|------|--------|
+| 模型 | 测试工具 | 加速卡型号 | 加速卡信息 | 所需卡数 | KVCache | 状态 | 时间戳 |
+|------|----------|------------|------------|----------|---------|------|--------|
 
-状态取值只能是：
+`KVCache` 只填 `kvcache_fp8` 或 `default`。状态取值只能是：
 
 - `待测试`：等待启动。
 - `测试中`：服务启动、curl 检查或评测执行中。

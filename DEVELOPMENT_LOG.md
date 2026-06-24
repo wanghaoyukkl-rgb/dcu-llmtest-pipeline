@@ -1,5 +1,13 @@
 # dcu-llmtest-pipeline 开发日志
 
+## Unreleased - 2026-06-24
+
+### 主要变化
+
+- 模型路径发现默认从目标节点 `/public/opendas/DL_DATA/llm-models/` 查找，允许模型目录是软链接并解析到 `/public4/...` 等真实存储位置。
+- 生成服务启动脚本时，模型路径优先使用目标节点绝对路径，例如 `/public/opendas/DL_DATA/llm-models/...`；`readlink -f` 仅用于记录真实落点，不强制替换脚本路径。
+- 生成脚本时省略 cookbook 或补充文档中的 `rm`、`rm -rf`、`rmdir` 等清理命令，避免自动删除缓存、日志、模型或临时目录。
+
 ## v0.7.2-watch-queue-cleanup - 2026-06-16
 
 ### 主要变化

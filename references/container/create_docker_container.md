@@ -11,14 +11,14 @@ NOTE: 在 DCU 和 NVIDIA 平台创建容器需使用不同命令。本 skill 当
 - `Node_IP`：目标节点 IP。
 - `Container_image_ID`：用户指定或在目标节点上选择的镜像 ID/名称。
 - `ACCELERATOR`：当前测试加速卡型号，例如 `BW1100`、`BW1000`、`K100AI`。
-- `MODEL_NAME`：当前测试模型名，用于容器路径 `/model/<MODEL_NAME>`。
+- `MODEL_NAME`：当前测试模型名。
 - `FRAMEWORK`：`vllm` 或 `sglang`。
 - `HOST_MODEL_PATH`：用户提供的目标节点宿主机模型目录。
 - `HOST_DATASET_PATH`：精度测试所需数据集根目录，默认 `/public/home/wanghy18/opencompass/data`。
 - `RUN_DIR`：本次测试落盘目录，用于挂载脚本、报告、服务日志和 OpenCompass 输出。
 - `OPENCOMPASS_SOURCE`：OpenCompass 来源；默认 `container-installed`，表示在容器内 `/workspace/opencompass` 拉取并安装。仅当用户明确指定本地现有工程路径时，才使用 `host-mounted:<path>` 并挂载到 `/workspace/opencompass`。
 
-若用户未提供 `HOST_MODEL_PATH`，不要猜测模型目录，先询问用户提供具体路径。
+若用户未提供 `HOST_MODEL_PATH`，先在目标节点 `/public/opendas/DL_DATA/llm-models/` 下查找同名或近似模型目录；该目录可能是软链接并解析到 `/public4/...`。找到候选后向用户展示并确认，或在用户已授权自动整理脚本时记录所用路径和 `readlink -f` 结果。
 
 若任务包含精度测试，先在目标节点检查默认数据集目录：
 
@@ -54,7 +54,7 @@ date +"%Y%m%d"
 <ACCELERATOR>-<YYYYMMDD>-<MODEL_NAME>-<FRAMEWORK>
 ```
 
-若 `MODEL_NAME` 包含 `/` 或空格，容器名中替换为 `-`；容器内模型路径仍使用 `/model/<MODEL_NAME>`。
+若 `MODEL_NAME` 包含 `/` 或空格，容器名中替换为 `-`；模型挂载路径可继续使用 `/model/<MODEL_NAME>` 作为兼容入口，但服务启动脚本中的模型路径优先使用目标节点绝对路径。
 
 模型目录挂载规则：
 
@@ -96,8 +96,8 @@ OpenCompass 输出必须写入：
 - `/mnt/opencompass/data` 只用于数据集；不要将 OpenCompass 工程挂载到 `/mnt/opencompass`。
 - 除非用户明确指定使用本地现有 OpenCompass 工程，否则容器创建阶段不挂载宿主机 OpenCompass 工程，后续按安装流程在容器内 `/workspace/opencompass` 拉取和安装。
 - 如果用户明确指定本地现有 OpenCompass 工程，挂载规则为 `-v <HOST_OPENCOMPASS_PATH>:/workspace/opencompass:ro` 或按用户要求读写挂载，并在计划表/报告中记录来源 `host-mounted:<path>`。
-- vLLM 和 SGLang 启动命令中的模型路径都统一使用 `/model/<MODEL_NAME>`。
-- 不要把用户提供的宿主机路径直接写入服务启动命令。
+- vLLM 和 SGLang 启动命令中的模型路径优先使用目标节点绝对路径，例如 `/public/opendas/DL_DATA/llm-models/<MODEL_NAME>`。
+- 若该路径是软链接，启动命令仍使用软链接入口路径；在脚本元信息或报告中记录 `readlink -f` 结果。
 - 启动服务前必须 `mkdir -p <RUN_DIR>/serve_logs`，并将服务 stdout/stderr 重定向到该目录下的 `<TASK_ID>.serve.log`。报告和排查时优先使用宿主机路径，容器内对应路径为 `/mnt/dcu-llmtest-run/serve_logs/<TASK_ID>.serve.log`。
 - OpenCompass 进度观察只读取 `<RUN_DIR>/<TASK_ID>/opencompass/logs/infer`、`logs/eval` 和可选 `summary`。
 
@@ -131,7 +131,8 @@ ssh -tt <Node_IP> "docker run -itd --name <container-name> \
 - 节点 IP
 - 镜像 ID/名称
 - 宿主机模型目录
-- 容器内模型路径：`/model/<MODEL_NAME>`
+- 服务脚本模型路径：优先为目标节点绝对路径
+- 容器内模型路径：若创建容器时挂载模型，则记录 `/model/<MODEL_NAME>`
 - 宿主机数据集目录：精度测试时必填，默认 `/public/home/wanghy18/opencompass/data`
 - 容器内数据集路径：`/mnt/opencompass/data`
 - OpenCompass 来源：默认 `container-installed`；若用户指定本地工程，则记录 `host-mounted:<path>` 和容器内路径 `/workspace/opencompass`

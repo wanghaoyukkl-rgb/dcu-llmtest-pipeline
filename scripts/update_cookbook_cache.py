@@ -13,7 +13,7 @@ from pathlib import Path
 
 REPO_URL = "https://github.com/HYGON-AI/dcu-inference-cookbook.git"
 SPARSE_PATH = "docs/model-deployment"
-DEFAULT_CACHE_ROOT = Path.home() / ".cache" / "dcu-llmtest-pipeline"
+DEFAULT_CACHE_ROOT = Path.home() / "cookbook"
 DEFAULT_TTL_DAYS = 3
 
 

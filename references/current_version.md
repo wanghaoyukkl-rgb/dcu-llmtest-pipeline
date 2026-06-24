@@ -12,7 +12,8 @@
 - 唯一测试报告为 `reports/test_report.md`；`reports/task_plan.md` 可继续作为人工计划表，表头包含 `加速卡信息` 和 `所需卡数`。
 - 不再生成重复摘要报告。
 - 保留 OpenCompass 固定启动脚本 `scripts/start_opencompass_safe.sh`，继续强制区分宿主机 `RUN_DIR` 与容器内 `CONFIG/WORK_DIR`，避免路径混用和权限问题；遇到类似 OpenCompass config/import/plugin 启动问题时允许通过 `autotest/configs` 软链接和 `VLLM_PLUGINS="" python /workspace/opencompass/run.py <config>.py --debug` 兜底启动。
-- 保留 HYGON-AI cookbook-first 的服务脚本生成规则：只允许适配 `HIP_VISIBLE_DEVICES`、容器模型路径和服务监听端口。
+- 保留 HYGON-AI cookbook-first 的服务脚本生成规则：只允许适配 `HIP_VISIBLE_DEVICES`、节点绝对模型路径和服务监听端口；模型路径优先从 `/public/opendas/DL_DATA/llm-models/` 查找，可保留软链接入口路径并记录真实落点。
+- 生成服务脚本时省略 cookbook 或补充文档中的 `rm`、`rm -rf`、`rmdir` 等清理命令，不主动删除缓存、日志、模型或临时目录。
 - 保留多模型计划表规则：同节点空闲卡足够时必须并发分配不同 `cards`/`port`；目标模式下某任务完成或异常后立即释放资源，只有加速卡型号和卡数匹配时才扫描待测试任务补充调度；所有任务终态后删除本轮测试容器。
 
 ## 当前版本边界
